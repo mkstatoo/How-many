@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a1a21">
+<title>قیمت هر متر مربع</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="stylesheet" href="vendor/leaflet.css">
+<style>
+@font-face{font-family:"Vazirmatn";src:url("vendor/fonts/Vazirmatn.woff2") format("woff2");font-weight:100 900;font-display:swap}
+:root{
+  --bg:#0a1a21; --ink:#e9f1f2; --ink-2:#9fb4ba; --ink-3:#6b848c;
+  --glass:rgba(12,30,38,.78); --glass-line:rgba(160,205,215,.16);
+  --gold:#e6b85c; --teal:#3cc0ae; --blue:#5b8def; --bad:#ef7b6c;
+  --r:16px;
+}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%;background:var(--bg);color:var(--ink);font-family:"Vazirmatn",system-ui,sans-serif;-webkit-tap-highlight-color:transparent}
+body{overflow:hidden}
+#map{position:fixed;inset:0;background:#0d222b}
+.leaflet-container{font-family:inherit}
+.leaflet-control-attribution{background:rgba(10,26,33,.7)!important;color:var(--ink-3)!important;font-size:10px}
+.leaflet-control-attribution a{color:var(--ink-2)!important}
+.leaflet-control-zoom{display:none}
+
+/* top bar */
+.top{position:fixed;z-index:500;inset:max(10px,env(safe-area-inset-top)) 10px auto 10px;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+/* شیشه‌ی مایع: تیره‌ی کم‌رنگ برای خوانایی + برق لبه + بازتاب نور */
+.glass{position:relative;isolation:isolate;border-radius:var(--r);
+  background:linear-gradient(135deg,rgba(255,255,255,.17),rgba(255,255,255,.035) 42%,rgba(255,255,255,.1)),rgba(9,24,31,.52);
+  backdrop-filter:blur(22px) saturate(180%) brightness(1.06);-webkit-backdrop-filter:blur(22px) saturate(180%) brightness(1.06);
+  border:1px solid rgba(255,255,255,.16);
+  box-shadow:inset 0 1.5px 0 rgba(255,255,255,.5),inset 0 -1px 0 rgba(255,255,255,.1),inset 1.5px 0 0 rgba(255,255,255,.14),inset -1.5px 0 0 rgba(255,255,255,.14),0 14px 34px rgba(0,0,0,.38)}
+.glass::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:-1;opacity:.75;mix-blend-mode:screen;
+  background:radial-gradient(110% 70% at 18% -10%,rgba(255,255,255,.34),transparent 46%),radial-gradient(80% 55% at 95% 110%,rgba(255,255,255,.12),transparent 52%)}
+.bar{pointer-events:auto;padding:10px 12px;display:flex;align-items:center;gap:10px}
+.bar h1{font-size:15px;font-weight:700;flex:1}
+.bar small{display:block;font-size:11px;font-weight:400;color:var(--ink-3);margin-top:1px}
+.iconbtn{width:38px;height:38px;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:linear-gradient(160deg,rgba(255,255,255,.18),rgba(255,255,255,.04));box-shadow:inset 0 1px 0 rgba(255,255,255,.45);color:var(--ink);display:grid;place-items:center;cursor:pointer;flex:none}
+.iconbtn:focus-visible,.chip:focus-visible,.link:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.iconbtn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.chips{pointer-events:auto;display:flex;gap:6px;overflow-x:auto;padding:8px 10px;scrollbar-width:none;align-items:center}
+.chips::-webkit-scrollbar{display:none}
+.chips .lbl{font-size:12px;color:var(--ink-3);flex:none;padding-inline-end:2px}
+.chip{flex:none;border:1px solid rgba(255,255,255,.16);background:linear-gradient(160deg,rgba(255,255,255,.16),rgba(255,255,255,.04));box-shadow:inset 0 1px 0 rgba(255,255,255,.35);color:var(--ink-2);font:inherit;font-size:13px;padding:5px 12px;border-radius:999px;cursor:pointer;transition:background .15s,color .15s,border-color .15s}
+.chip[aria-pressed=true]{background:linear-gradient(160deg,#f3cf86,var(--gold));box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 4px 14px rgba(230,184,92,.35);border-color:var(--gold);color:#241a05;font-weight:700}
+.chip.tol[aria-pressed=true]{background:linear-gradient(160deg,#6fe0cf,var(--teal));border-color:var(--teal);color:#04241f}
+.sep{flex:none;width:1px;height:20px;background:var(--glass-line);margin-inline:2px}
+
+/* result sheet */
+.sheet{position:fixed;z-index:500;inset:auto 10px max(10px,env(safe-area-inset-bottom)) 10px;max-height:62vh;display:flex;flex-direction:column;overflow:hidden}
+.sheet-head{padding:14px 16px 12px;display:flex;flex-direction:column;gap:4px}
+.street{font-size:13px;color:var(--ink-2);display:flex;gap:6px;align-items:center;min-height:20px}
+.street svg{width:15px;height:15px;stroke:var(--teal);fill:none;stroke-width:2;flex:none}
+.price{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.price b{font-size:40px;line-height:1.15;font-weight:800;color:var(--gold);letter-spacing:-.5px}
+.price span{font-size:14px;color:var(--ink-2)}
+.range{margin-top:10px}
+.rail{position:relative;height:6px;border-radius:6px;background:linear-gradient(270deg,var(--teal),var(--blue) 55%,var(--gold))}
+.rail i{position:absolute;top:50%;width:14px;height:14px;border-radius:50%;background:var(--ink);border:3px solid var(--bg);transform:translate(50%,-50%)}
+.rail i.avg{background:var(--gold)}
+.rail-l{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink-3);margin-top:6px}
+.facts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+.fact{border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:8px 10px;background:rgba(255,255,255,.05);box-shadow:inset 0 1px 0 rgba(255,255,255,.2)}
+.fact b{display:block;font-size:15px;font-weight:700}
+.fact span{font-size:11.5px;color:var(--ink-3)}
+.note{margin-top:10px;font-size:12.5px;line-height:1.7;padding:8px 10px;border-radius:12px;background:rgba(230,184,92,.1);color:#f0d6a0}
+.note.bad{background:rgba(239,123,108,.12);color:#f5b3aa}
+.sheet-toggle{margin:0 16px 10px;border:0;background:none;color:var(--teal);font:inherit;font-size:13px;text-align:start;cursor:pointer;padding:4px 0}
+.list{overflow:auto;border-top:1px solid var(--glass-line);padding:4px 16px 10px;display:none}
+.sheet.open .list{display:block}
+.row{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:9px 0;border-bottom:1px solid var(--glass-line);font-size:13px}
+.row:last-child{border:0}
+.row .t{color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .p{font-weight:700;color:var(--gold);text-align:end}
+.row .m{font-size:11.5px;color:var(--ink-3)}
+.row .link{font-size:11.5px;color:var(--blue);text-align:end;text-decoration:none}
+.empty{padding:16px;font-size:14px;line-height:1.9;color:var(--ink-2)}
+.empty b{color:var(--ink)}
+.hidden{display:none!important}
+
+/* desktop: side panel */
+@media (min-width:820px){
+  .top{inset:14px 14px auto auto;width:400px}
+  .sheet{inset:auto auto 14px 14px;left:auto;right:14px;top:auto;max-height:calc(100vh - 190px);width:400px}
+}
+
+/* data loader fallback */
+.loader{position:fixed;inset:0;z-index:900;display:grid;place-items:center;background:rgba(6,16,21,.88);padding:20px}
+.loader .box{max-width:420px;width:100%;padding:22px;line-height:1.9;font-size:14px}
+.loader h2{font-size:17px;margin-bottom:6px}
+.loader button,.loader label.btn{display:inline-block;margin-top:12px;background:var(--gold);color:#241a05;border:0;border-radius:12px;padding:9px 16px;font:inherit;font-weight:700;cursor:pointer}
+.toast{position:fixed;z-index:800;inset:auto 0 auto 0;top:max(150px,env(safe-area-inset-top));margin-inline:auto;width:max-content;max-width:90vw;padding:8px 14px;font-size:12.5px;color:var(--ink-2)}
+@media (prefers-reduced-motion:no-preference){.sheet{transition:transform .25s ease}}
+
+/* ثبت‌نام */
+.reg{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:20px;background:#07131a;overflow:hidden;transition:opacity .35s ease,visibility .35s}
+.reg.gone{opacity:0;visibility:hidden}
+.blob{position:absolute;border-radius:50%;filter:blur(60px);opacity:.75}
+.blob.a{width:340px;height:340px;background:var(--teal);inset:-60px auto auto -80px}
+.blob.b{width:380px;height:380px;background:var(--gold);inset:auto -100px -90px auto;opacity:.6}
+.blob.c{width:260px;height:260px;background:var(--blue);inset:30% auto auto 55%;opacity:.55}
+@media (prefers-reduced-motion:no-preference){
+  .blob.a{animation:drift 16s ease-in-out infinite alternate}
+  .blob.b{animation:drift 20s ease-in-out infinite alternate-reverse}
+  .blob.c{animation:drift 18s ease-in-out infinite alternate}
+  @keyframes drift{to{transform:translate(40px,-30px) scale(1.12)}}
+}
+.reg-card{position:relative;width:100%;max-width:380px;padding:26px 22px 22px;border-radius:30px}
+.reg-card h2{font-size:22px;font-weight:800}
+.reg-card p.sub{font-size:13.5px;line-height:1.9;color:var(--ink-2);margin:4px 0 18px}
+.field{display:block;margin-bottom:14px}
+.field span{display:block;font-size:13px;color:var(--ink-2);margin-bottom:6px}
+.field input{width:100%;height:48px;padding:0 14px;font:inherit;font-size:16px;color:var(--ink);border-radius:16px;border:1px solid rgba(255,255,255,.18);
+  background:linear-gradient(180deg,rgba(0,0,0,.28),rgba(0,0,0,.12));box-shadow:inset 0 2px 6px rgba(0,0,0,.35),0 1px 0 rgba(255,255,255,.12)}
+.field input::placeholder{color:var(--ink-3)}
+.field input:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.field input[aria-invalid=true]{border-color:var(--bad)}
+.field small{display:block;font-size:12px;color:var(--ink-3);margin-top:5px}
+.err{min-height:20px;font-size:13px;line-height:1.7;color:#f5b3aa;margin-bottom:8px}
+.go{width:100%;height:50px;border:0;border-radius:18px;font:inherit;font-size:16px;font-weight:800;color:#241a05;cursor:pointer;
+  background:linear-gradient(160deg,#f7d78f,var(--gold) 60%,#d49f3e);box-shadow:inset 0 1.5px 0 rgba(255,255,255,.75),inset 0 -2px 0 rgba(0,0,0,.12),0 10px 24px rgba(230,184,92,.3)}
+.go:focus-visible{outline:2px solid #fff;outline-offset:3px}
+.go[disabled]{opacity:.6;cursor:progress}
+.fine{font-size:12px;line-height:1.8;color:var(--ink-3);margin-top:12px}
+.me{flex:none;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:15px;color:#04241f;background:linear-gradient(160deg,#8ff0e0,var(--teal));box-shadow:inset 0 1px 0 rgba(255,255,255,.6)}
+</style>
+</head>
+<body>
+<div id="map" aria-label="نقشه مشهد"></div>
+
+<div class="top">
+  <div class="bar glass">
+    <span class="me hidden" id="me" aria-hidden="true"></span>
+    <h1>قیمت هر متر مربع<small id="dataInfo">در حال خواندن داده…</small></h1>
+    <button class="iconbtn hidden" id="install" aria-label="نصب اپ"><svg viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19h14"/></svg></button>
+    <button class="iconbtn" id="locate" aria-label="موقعیت من"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
+  </div>
+  <div class="chips glass" id="chips" role="group" aria-label="سال ساخت"></div>
+</div>
+
+<section class="sheet glass" id="sheet" aria-live="polite">
+  <div class="empty" id="hint"><b>یک نقطه روی نقشه انتخاب کنید</b><br>میانگین قیمت هر متر مربع آگهی‌های اطراف آن نقطه، برای سال ساخت انتخاب‌شده نشان داده می‌شود.</div>
+  <div id="result" class="hidden">
+    <div class="sheet-head">
+      <div class="street"><svg viewBox="0 0 24 24"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.5"/></svg><span id="streetName">—</span></div>
+      <div class="price"><b id="avg">—</b><span>میلیون تومان برای هر متر مربع</span></div>
+      <div class="range" id="range"></div>
+      <div class="facts" id="facts"></div>
+      <div id="notes"></div>
+    </div>
+    <button class="sheet-toggle" id="toggle" aria-expanded="false"></button>
+    <div class="list" id="list"></div>
+  </div>
+</section>
+
+<div class="reg hidden" id="reg" role="dialog" aria-modal="true" aria-labelledby="regTitle">
+  <i class="blob a"></i><i class="blob b"></i><i class="blob c"></i>
+  <form class="reg-card glass" id="regForm" novalidate>
+    <h2 id="regTitle">ثبت‌نام</h2>
+    <p class="sub">برای شروع، شماره موبایل و یک نام کاربری وارد کنید.</p>
+    <label class="field"><span>شماره موبایل</span>
+      <input id="fMobile" name="mobile" dir="ltr" inputmode="tel" autocomplete="tel" placeholder="09123456789" maxlength="16" required></label>
+    <label class="field"><span>نام کاربری</span>
+      <input id="fUser" name="username" dir="auto" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="مثلاً ali_1405" maxlength="20" required>
+      <small>۳ تا ۲۰ کاراکتر: حروف، عدد، نقطه یا زیرخط</small></label>
+    <div class="err" id="regErr" role="alert"></div>
+    <button class="go" id="regGo" type="submit">ثبت‌نام</button>
+    <p class="fine">نقطه‌هایی که روی نقشه انتخاب می‌کنید به‌صورت ناشناس و فقط برای بهبود پوشش داده شمارش می‌شود. نام و شماره‌ی شما به آن وصل نمی‌شود.</p>
+  </form>
+</div>
+<div class="loader hidden" id="loader"><div class="box glass">
+  <h2 id="loaderTitle">فایل داده خوانده نشد</h2>
+  <div id="loaderMsg"></div>
+  <label class="btn" id="fileBtn">انتخاب فایل داده<input type="file" id="file" accept=".xlsx,.xls,.csv,.json" hidden></label>
+</div></div>
+<div class="toast glass hidden" id="toast"></div>
+
+<script src="vendor/leaflet.js"></script>
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="listings-core.js"></script>
+<script src="config.js"></script>
+<script>
+(function(){
+"use strict";
+const C = window.APP_CONFIG;
+const $ = id => document.getElementById(id);
+const fa = (n, d=0) => Number(n).toLocaleString("fa-IR",{maximumFractionDigits:d,minimumFractionDigits:d});
+const mil = v => fa(v/1e6, 1);
+
+/* ---------- parsing (منطق مشترک در listings-core.js) ---------- */
+const { clean } = window.ListingsCore;
+const buildListings = rows => window.ListingsCore.buildListings(rows, C);
+const readWorkbook = (buf, name) => window.ListingsCore.readRows(buf, name, XLSX);
+
+/* ---------- state ---------- */
+let listings = [], stats = null;
+let year = C.defaultYear, tol = false;
+let point = null, streetName = "", revToken = 0;
+const map = L.map("map",{zoomControl:false,attributionControl:true,preferCanvas:true}).setView(C.center,C.zoom);
+const selLayer = L.layerGroup().addTo(map);
+
+/* ---------- tiles ---------- */
+const useMapir = !!(C.mapirKey && C.mapirKey.trim());
+const KEY = useMapir ? C.mapirKey.trim() : "";
+const attrib = useMapir ? '© <a href="https://map.ir">map.ir</a> | © OpenStreetMap' : '© OpenStreetMap © CARTO';
+// نسخه‌ای از لایه‌ی تایل که کلید را مثل مستندات map.ir در هدر x-api-key می‌فرستد
+const HeaderTiles = L.TileLayer.extend({
+  createTile(coords, done){
+    const img = document.createElement("img"); img.alt = "";
+    fetch(this.getTileUrl(coords), {headers:{"x-api-key":KEY}})
+      .then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.blob(); })
+      .then(b=>{ const u=URL.createObjectURL(b); img.onload=()=>{URL.revokeObjectURL(u); done(null,img);}; img.onerror=()=>done(new Error("img"),img); img.src=u; })
+      .catch(e=>done(e,img));
+    return img;
+  }
+});
+let tileLayer = null, tileFailed = 0, tileOk = 0, mode = useMapir ? (C.mapirKeyMode==="query" ? "query" : "header") : "osm";
+function makeLayer(m){
+  if(m==="header") return new HeaderTiles(C.mapirTileUrl,{maxZoom:19,attribution:attrib});
+  if(m==="query")  return L.tileLayer(C.mapirTileUrlQuery.replace("{key}",encodeURIComponent(KEY)),{maxZoom:19,attribution:attrib});
+  return L.tileLayer(C.osmTileUrl,{maxZoom:19,attribution:attrib});
+}
+function mountTiles(m){
+  if(tileLayer) map.removeLayer(tileLayer);
+  mode = m; tileFailed = 0; tileOk = 0;
+  tileLayer = makeLayer(m)
+    .on("tileload",()=>{tileOk++;})
+    .on("tileerror",()=>{
+      if(tileOk>0) return;
+      if(++tileFailed===4){
+        if(mode==="header"){ mountTiles("query"); }   // اگر سرور هدر سفارشی را نپذیرفت، کلید را در URL می‌فرستیم
+        else toast(useMapir ? "تایل‌های map.ir بارگذاری نشد. کلید یا دسترسی دامنه را بررسی کنید." : "تایل‌های نقشه بارگذاری نشد. اتصال اینترنت را بررسی کنید.");
+      }
+    }).addTo(map);
+}
+mountTiles(mode);
+
+function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.remove("hidden"); clearTimeout(toast.h); toast.h=setTimeout(()=>t.classList.add("hidden"),6000); }
+
+/* ---------- geometry ---------- */
+function dist(a,b,c,d){ const R=6371000,t=Math.PI/180,dl=(c-a)*t,dn=(d-b)*t;
+  const h=Math.sin(dl/2)**2+Math.cos(a*t)*Math.cos(c*t)*Math.sin(dn/2)**2; return 2*R*Math.asin(Math.sqrt(h)); }
+
+/* ---------- queries ---------- */
+const matchYear = l => year==null ? true : (tol ? Math.abs(l.year-year)<=C.yearTolerance : l.year===year);
+
+function analyse(lat,lng){
+  const cand = listings.filter(matchYear).map(l=>({l,d:dist(lat,lng,l.lat,l.lng)})).sort((a,b)=>a.d-b.d);
+  let radius = C.radiiMeters[C.radiiMeters.length-1], sel = [];
+  for(const r of C.radiiMeters){ sel = cand.filter(x=>x.d<=r); radius=r; if(sel.length>=C.minListings) break; }
+  const vals = sel.map(x=>x.l.per).sort((a,b)=>a-b);
+  const mean = vals.length ? vals.reduce((s,v)=>s+v,0)/vals.length : null;
+  const mid = vals.length ? (vals.length%2 ? vals[(vals.length-1)/2] : (vals[vals.length/2-1]+vals[vals.length/2])/2) : null;
+  return {cand, sel, radius, mean, median:mid, min:vals[0], max:vals[vals.length-1]};
+}
+
+/* ---------- render ---------- */
+function renderChips(){
+  const yrs = [...new Set(listings.map(l=>l.year))]; if(!yrs.includes(C.defaultYear)) yrs.push(C.defaultYear);
+  yrs.sort((a,b)=>b-a);
+  const box = $("chips"); box.innerHTML = "";
+  const mk = (label, pressed, cls, fn) => { const b=document.createElement("button"); b.className="chip "+(cls||""); b.type="button"; b.textContent=label; b.setAttribute("aria-pressed",pressed); b.onclick=fn; return b; };
+  const lbl = document.createElement("span"); lbl.className="lbl"; lbl.textContent="سال ساخت"; box.appendChild(lbl);
+  yrs.forEach(y=>box.appendChild(mk(String(y).replace(/\d/g,d=>"۰۱۲۳۴۵۶۷۸۹"[d]), year===y, "", ()=>{year=y; refresh();})));
+  box.appendChild(mk("همه", year==null, "", ()=>{year=null; refresh();}));
+  const s=document.createElement("span"); s.className="sep"; box.appendChild(s);
+  box.appendChild(mk("±"+fa(C.yearTolerance)+" سال", tol, "tol", ()=>{tol=!tol; refresh();}));
+}
+
+function renderResult(){
+  if(!point){ $("hint").classList.remove("hidden"); $("result").classList.add("hidden"); return; }
+  $("hint").classList.add("hidden"); $("result").classList.remove("hidden");
+  const a = analyse(point.lat, point.lng);
+  const yTxt = year==null ? "همه سال‌ها" : "سال ساخت "+fa(year).replace(/٬/g,"")+(tol?" (±"+fa(C.yearTolerance)+")":"");
+  $("streetName").textContent = streetName || (useMapir ? "نام معبر در دسترس نیست" : "نام معبر با کلید map.ir نمایش داده می‌شود");
+
+  selLayer.clearLayers();
+  L.circle([point.lat,point.lng],{radius:a.radius,color:"#e6b85c",weight:1.5,dashArray:"5 6",fillColor:"#e6b85c",fillOpacity:.06,interactive:false}).addTo(selLayer);
+  L.circleMarker([point.lat,point.lng],{radius:8,color:"#0a1a21",weight:3,fillColor:"#e6b85c",fillOpacity:1,interactive:false}).addTo(selLayer);
+
+  const notes=[], facts=$("facts"), range=$("range"), list=$("list");
+  if(!a.sel.length){
+    $("avg").textContent="—"; range.innerHTML=""; facts.innerHTML=""; list.innerHTML=""; $("toggle").classList.add("hidden");
+    const near = a.cand[0];
+    notes.push('<div class="note bad">برای '+yTxt+' در شعاع '+fa(C.radiiMeters.at(-1)/1000,1)+' کیلومتری این نقطه آگهی‌ای نیست.'+
+      (near ? ' نزدیک‌ترین آگهی '+fa(near.d/1000,1)+' کیلومتر دورتر است.' : (listings.length ? ' برای این سال هیچ آگهی دارای مختصات در داده نیست.' : ''))+'</div>');
+    $("notes").innerHTML = notes.join(""); return;
+  }
+  $("toggle").classList.remove("hidden");
+  $("avg").textContent = mil(a.mean);
+  const span = a.max-a.min;
+  const pos = v => span>0 ? ((v-a.min)/span*100) : 50;
+  range.innerHTML = '<div class="rail"><i style="inset-inline-start:'+pos(a.median)+'%" title="میانه"></i><i class="avg" style="inset-inline-start:'+pos(a.mean)+'%" title="میانگین"></i></div>'+
+    '<div class="rail-l"><span>کمترین ' + mil(a.min)+'</span><span>بیشترین '+mil(a.max)+'</span></div>';
+  facts.innerHTML = [[fa(a.sel.length),"آگهی"],[mil(a.median),"میانه (م.ت)"],[fa(a.radius)+" متر","شعاع جست‌وجو"]]
+    .map(x=>'<div class="fact"><b>'+x[0]+'</b><span>'+x[1]+'</span></div>').join("");
+
+  if(a.sel.length<C.minListings) notes.push('<div class="note">فقط '+fa(a.sel.length)+' آگهی در دسترس است؛ این عدد دقت کمی دارد.</div>');
+  if(streetName){
+    const key = clean(streetName), same = a.sel.filter(x=>x.l.street && (clean(x.l.street).includes(key)||key.includes(clean(x.l.street))));
+    if(same.length) notes.push('<div class="note">میانگین آگهی‌های ثبت‌شده برای «'+key+'»: '+mil(same.reduce((s,x)=>s+x.l.per,0)/same.length)+' میلیون تومان ('+fa(same.length)+' آگهی)</div>');
+  }
+  $("notes").innerHTML = notes.join("");
+
+  $("toggle").textContent = $("sheet").classList.contains("open") ? "بستن فهرست آگهی‌ها" : "نمایش "+fa(a.sel.length)+" آگهی نزدیک ("+yTxt+")";
+  list.innerHTML = a.sel.map(x=>{
+    const l=x.l, safeUrl = /^https?:\/\//.test(l.url||"") ? l.url : "";
+    const el = document.createElement("div"); el.className="row";
+    const t=document.createElement("div"); t.className="t"; t.textContent=l.title||"بدون عنوان";
+    const p=document.createElement("div"); p.className="p"; p.textContent=mil(l.per)+" م.ت";
+    const m=document.createElement("div"); m.className="m"; m.textContent=fa(l.area)+" متر · ساخت "+String(l.year).replace(/\d/g,d=>"۰۱۲۳۴۵۶۷۸۹"[d])+" · "+fa(x.d)+" متر فاصله";
+    el.append(t,p,m);
+    if(safeUrl){ const a=document.createElement("a"); a.className="link"; a.href=safeUrl; a.target="_blank"; a.rel="noopener noreferrer"; a.textContent="آگهی در دیوار"; el.appendChild(a); }
+    return el.outerHTML;
+  }).join("");
+}
+
+function refresh(){ renderChips(); renderResult(); }
+
+/* ---------- reverse geocoding (map.ir) ---------- */
+async function reverse(lat,lng){
+  if(!useMapir){ streetName=""; return; }
+  const tok = ++revToken; streetName="";
+  try{
+    const r = await fetch(C.mapirReverseUrl+"?lat="+lat+"&lon="+lng,{headers:{"x-api-key":C.mapirKey.trim()}});
+    if(!r.ok) throw new Error(r.status);
+    const j = await r.json();
+    if(tok!==revToken) return;
+    streetName = j.primary || j.last || j.address_compact || "";
+  }catch(e){ if(tok===revToken) streetName=""; }
+}
+
+function track(lat,lng){
+  const u = savedUser(); if(!C.pickUrl || !u || !u.token) return;
+  const a = analyse(lat,lng);
+  fetch(C.pickUrl,{method:"POST",keepalive:true,headers:{"Content-Type":"application/json","x-user-token":u.token},
+    body:JSON.stringify({lat:+lat.toFixed(4),lng:+lng.toFixed(4),year,found:a.sel.length,min:C.minListings})}).catch(()=>{});
+}
+async function pick(lat,lng){
+  point={lat,lng}; renderResult(); track(lat,lng);
+  await reverse(lat,lng);
+  if(point && point.lat===lat && point.lng===lng) renderResult();
+}
+map.on("click",e=>pick(e.latlng.lat,e.latlng.lng));
+$("toggle").onclick=()=>{ const s=$("sheet"); s.classList.toggle("open"); $("toggle").setAttribute("aria-expanded",s.classList.contains("open")); renderResult(); };
+$("locate").onclick=()=>{
+  if(!navigator.geolocation) return toast("مرورگر شما موقعیت‌یابی را پشتیبانی نمی‌کند.");
+  navigator.geolocation.getCurrentPosition(p=>{ map.setView([p.coords.latitude,p.coords.longitude],16); pick(p.coords.latitude,p.coords.longitude); },
+    ()=>toast("دسترسی به موقعیت داده نشد. روی نقشه نقطه را انتخاب کنید."),{enableHighAccuracy:true,timeout:10000});
+};
+
+/* ---------- load data ---------- */
+function ingest(rows, label){
+  const res = buildListings(rows); listings=res.list; stats=res.stats; window.__stats=stats; window.__listings=listings;
+  const s=stats, skipped=s.rows-s.ok-s.dup;
+  $("dataInfo").textContent = fa(s.ok)+" آگهی قابل استفاده از "+fa(s.rows)+" ردیف"+(skipped?" — "+fa(skipped)+" ردیف کنار گذاشته شد":"");
+  $("dataInfo").title = "بدون مختصات: "+s.noGeo+" | بدون سال/متراژ (زمین و…): "+s.noYear+" | بدون قیمت: "+s.noPrice+" | قیمت ناسازگار: "+s.mismatch+" | خارج از مشهد: "+s.outside+" | تکراری: "+s.dup;
+  $("loader").classList.add("hidden"); refresh();
+}
+/* ذخیره‌ی فایل انتخاب‌شده در همین مرورگر (برای وقتی صفحه مستقیم از فایل باز می‌شود و fetch مجاز نیست) */
+function idb(){ return new Promise((res,rej)=>{ const q=indexedDB.open("arzesh-app",1); q.onupgradeneeded=()=>q.result.createObjectStore("f"); q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error); }); }
+async function idbGet(){ try{ const d=await idb(); return await new Promise(r=>{ const q=d.transaction("f").objectStore("f").get("data"); q.onsuccess=()=>r(q.result||null); q.onerror=()=>r(null); }); }catch(e){ return null; } }
+async function idbSet(v){ try{ const d=await idb(); await new Promise((res,rej)=>{ const t=d.transaction("f","readwrite"); t.objectStore("f").put(v,"data"); t.oncomplete=res; t.onerror=()=>rej(t.error); }); }catch(e){} }
+
+function showBlocked(){
+  $("dataInfo").textContent="دسترسی بسته است";
+  $("loaderTitle").textContent="دسترسی حساب شما بسته شده است";
+  $("loaderMsg").textContent="برای رفع مشکل با مدیر سامانه تماس بگیرید.";
+  $("fileBtn").classList.add("hidden"); $("loader").classList.remove("hidden");
+}
+async function load(fresh){
+  try{
+    const u = savedUser() || fresh || null;
+    const r = await fetch(C.dataUrl+(C.dataUrl.includes("?")?"&":"?")+"t="+Date.now(),{cache:"no-store",headers:u&&u.token?{"x-user-token":u.token}:{}});
+    if(r.status===403) return showBlocked();
+    if(r.status===401 && C.registerUrl){ try{ localStorage.removeItem(USER_KEY); }catch(_){} return location.reload(); }   // حساب روی سرور نیست: ثبت‌نام دوباره
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    ingest(await readWorkbook(await r.arrayBuffer(), C.dataUrl), C.dataUrl);
+  }catch(e){
+    const c = await idbGet();
+    if(c){ try{ ingest(await readWorkbook(c.buf, c.name), c.name); $("dataInfo").textContent += " (فایل ذخیره‌شده در این مرورگر)"; return; }catch(_){} }
+    $("dataInfo").textContent="فایل داده خوانده نشد";
+    $("loaderMsg").textContent = location.protocol==="file:"
+      ? "صفحه مستقیم از روی فایل باز شده و مرورگر اجازه‌ی خواندن data/listings.xlsx را نمی‌دهد. یک‌بار فایل داده را انتخاب کنید تا در همین مرورگر ذخیره شود. روی سرور این مرحله لازم نیست."
+      : "مسیر «"+C.dataUrl+"» روی سرور در دسترس نیست ("+e.message+"). مسیر فایل را در config.js بررسی کنید یا فایل را دستی انتخاب کنید.";
+    $("loader").classList.remove("hidden"); renderChips();
+  }
+}
+$("file").onchange = async e=>{ const f=e.target.files[0]; if(!f) return;
+  try{ const buf=await f.arrayBuffer(); ingest(await readWorkbook(buf, f.name), f.name); await idbSet({buf,name:f.name}); }
+  catch(err){ $("loaderMsg").textContent="این فایل خوانده نشد: "+err.message; } };
+
+/* ---------- ثبت‌نام ---------- */
+const USER_KEY = "arzesh_user";
+const latin = s => String(s).replace(/[۰-۹]/g,c=>"۰۱۲۳۴۵۶۷۸۹".indexOf(c)).replace(/[٠-٩]/g,c=>"٠١٢٣٤٥٦٧٨٩".indexOf(c));
+function normMobile(v){
+  let s = latin(v).replace(/[\s\-()]/g,"");
+  if(s.startsWith("+98")) s="0"+s.slice(3); else if(s.startsWith("0098")) s="0"+s.slice(4);
+  else if(/^98\d{10}$/.test(s)) s="0"+s.slice(2); else if(/^9\d{9}$/.test(s)) s="0"+s;
+  return s;
+}
+const normUser = v => latin(String(v).normalize("NFKC")).replace(/[\u200c\u200f\u200e]/g,"").replace(/ي/g,"ی").replace(/ك/g,"ک").trim();
+const MOBILE_RE = /^09\d{9}$/, USER_RE = /^[A-Za-z0-9_.\u0621-\u063A\u0641-\u064A\u067E\u0686\u0698\u06A9\u06AF\u06CC]{3,20}$/;
+function savedUser(){ try{ const u=JSON.parse(localStorage.getItem(USER_KEY)); return u && u.id && u.username && (u.token || !C.registerUrl) ? u : null; }catch(e){ return null; } }
+function showMe(u){ const m=$("me"); m.textContent=Array.from(u.username)[0].toUpperCase(); m.title=u.username; m.classList.remove("hidden"); }
+function finishReg(u){ try{ localStorage.setItem(USER_KEY, JSON.stringify(u)); }catch(e){} showMe(u); load(u); const r=$("reg"); r.classList.add("gone"); setTimeout(()=>r.classList.add("hidden"),400); }
+(function initReg(){
+  const u = savedUser(); if(u){ showMe(u); load(); return; }
+  const r=$("reg"), form=$("regForm"), err=$("regErr"), fm=$("fMobile"), fu=$("fUser"), go=$("regGo");
+  r.classList.remove("hidden"); setTimeout(()=>fm.focus(),50);
+  const fail=(msg,field)=>{ err.textContent=msg; fm.removeAttribute("aria-invalid"); fu.removeAttribute("aria-invalid"); const f=field==="mobile"?fm:field==="username"?fu:null; if(f){ f.setAttribute("aria-invalid","true"); f.focus(); } };
+  fm.addEventListener("input",()=>{ fm.value=latin(fm.value).replace(/[^\d+\s-]/g,""); });
+  form.addEventListener("submit",async ev=>{
+    ev.preventDefault(); err.textContent="";
+    const mobile=normMobile(fm.value), username=normUser(fu.value);
+    if(!MOBILE_RE.test(mobile)) return fail("شماره موبایل باید با ۰۹ شروع شود و ۱۱ رقم باشد.","mobile");
+    if(!USER_RE.test(username)) return fail("نام کاربری باید ۳ تا ۲۰ کاراکتر و فقط حروف، عدد، نقطه یا زیرخط باشد.","username");
+    go.disabled=true; go.textContent="در حال ثبت‌نام…";
+    try{
+      if(!C.registerUrl){ finishReg({id:"local-"+Date.now(),mobile,username}); return; }   // حالت آزمایشی بدون سرور
+      const res = await fetch(C.registerUrl,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mobile,username})});
+      let j={}; try{ j=await res.json(); }catch(e){}
+      if(res.status===201 && j.id && j.token) finishReg({id:j.id,mobile,username:j.username||username,token:j.token});
+      else if(res.status>=400 && res.status<500 && j.error) fail(j.error,j.field);
+      else fail("ثبت‌نام روی سرور انجام نشد. دوباره تلاش کنید.");
+    }catch(e){ fail("ارتباط با سرور برقرار نشد. اتصال را بررسی و دوباره تلاش کنید."); }
+    finally{ go.disabled=false; go.textContent="ثبت‌نام"; }
+  });
+})();
+
+/* ---------- نصب اپ (PWA) ---------- */
+let deferredInstall=null;
+window.addEventListener("beforeinstallprompt",e=>{ e.preventDefault(); deferredInstall=e; $("install").classList.remove("hidden"); });
+$("install").onclick=async()=>{ if(!deferredInstall) return; deferredInstall.prompt(); await deferredInstall.userChoice; deferredInstall=null; $("install").classList.add("hidden"); };
+window.addEventListener("appinstalled",()=>$("install").classList.add("hidden"));
+if("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register("sw.js").catch(()=>{});
+
+window.__app = {analyse, setYear:(y,t)=>{year=y;tol=!!t;refresh();}, pick};
+})();
+</script>
+</body>
+</html>

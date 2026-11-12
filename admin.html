@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#0a1a21">
+<title>پنل مدیریت قیمت متر</title>
+<link rel="stylesheet" href="vendor/leaflet.css">
+<style>
+@font-face{font-family:"Vazirmatn";src:url("vendor/fonts/Vazirmatn.woff2") format("woff2");font-weight:100 900;font-display:swap}
+:root{--bg:#07131a;--ink:#e9f1f2;--ink-2:#9fb4ba;--ink-3:#6b848c;--gold:#e6b85c;--teal:#3cc0ae;--blue:#5b8def;--bad:#ef7b6c;--line:rgba(255,255,255,.14)}
+*{box-sizing:border-box;margin:0}
+html,body{min-height:100%;background:var(--bg);color:var(--ink);font-family:"Vazirmatn",system-ui,sans-serif}
+html{overflow-x:hidden}
+body{padding:16px;min-height:100vh}
+.blob{position:fixed;border-radius:50%;filter:blur(80px);opacity:.45;z-index:-1;pointer-events:none}
+.blob.a{width:420px;height:420px;background:var(--teal);inset:-120px auto auto -120px}
+.blob.b{width:460px;height:460px;background:var(--gold);inset:auto -140px -140px auto;opacity:.32}
+.blob.c{width:300px;height:300px;background:var(--blue);inset:35% auto auto 55%;opacity:.28}
+.glass{position:relative;isolation:isolate;border-radius:22px;
+  background:linear-gradient(135deg,rgba(255,255,255,.15),rgba(255,255,255,.03) 42%,rgba(255,255,255,.09)),rgba(9,24,31,.55);
+  backdrop-filter:blur(22px) saturate(170%);-webkit-backdrop-filter:blur(22px) saturate(170%);border:1px solid rgba(255,255,255,.15);
+  box-shadow:inset 0 1.5px 0 rgba(255,255,255,.45),inset 0 -1px 0 rgba(255,255,255,.08),0 14px 34px rgba(0,0,0,.35)}
+.glass::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:-1;opacity:.7;mix-blend-mode:screen;
+  background:radial-gradient(110% 70% at 18% -10%,rgba(255,255,255,.3),transparent 46%)}
+.wrap{max-width:1100px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+header.glass{padding:12px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+header h1{font-size:17px;font-weight:800;flex:1;min-width:140px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+button,.btn{font:inherit;cursor:pointer}
+.tab,.btn{border:1px solid rgba(255,255,255,.18);background:linear-gradient(160deg,rgba(255,255,255,.16),rgba(255,255,255,.04));color:var(--ink-2);border-radius:999px;padding:6px 14px;font-size:13.5px;box-shadow:inset 0 1px 0 rgba(255,255,255,.35)}
+.tab[aria-selected=true]{background:linear-gradient(160deg,#f3cf86,var(--gold));color:#241a05;font-weight:700;border-color:var(--gold)}
+.btn.primary{background:linear-gradient(160deg,#f3cf86,var(--gold));color:#241a05;font-weight:700;border-color:var(--gold)}
+.btn.danger{color:#f5b3aa;border-color:rgba(239,123,108,.5)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+section.panel{display:none;flex-direction:column;gap:14px}
+section.panel.on{display:flex}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+.card{padding:14px 16px}
+.card b{display:block;font-size:28px;font-weight:800;line-height:1.3}
+.card span{font-size:12.5px;color:var(--ink-2)}
+.card.gold b{color:var(--gold)}
+.box{padding:16px}
+.box h2{font-size:15px;font-weight:700;margin-bottom:10px}
+.box p.m{font-size:13px;color:var(--ink-2);line-height:1.9}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:760px){.grid2{grid-template-columns:1fr}}
+svg.chart{width:100%;height:130px;display:block}
+svg.chart rect{fill:var(--teal)} svg.chart rect:hover{fill:var(--gold)}
+.axis{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink-3);margin-top:4px}
+input[type=search],input[type=password]{height:42px;padding:0 14px;font:inherit;font-size:15px;color:var(--ink);border-radius:14px;border:1px solid rgba(255,255,255,.18);background:linear-gradient(180deg,rgba(0,0,0,.28),rgba(0,0,0,.12));box-shadow:inset 0 2px 6px rgba(0,0,0,.35)}
+.bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.bar input{flex:1;min-width:160px}
+.tbl{overflow:auto;max-height:60vh}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th,td{padding:9px 10px;text-align:start;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--ink-3);font-weight:500;position:sticky;top:0;background:rgba(9,24,31,.92)}
+td.ltr{direction:ltr;text-align:right}
+.pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;background:rgba(60,192,174,.18);color:#8ff0e0}
+.pill.off{background:rgba(239,123,108,.18);color:#f5b3aa}
+.msg{font-size:13.5px;line-height:1.9;padding:10px 12px;border-radius:14px;margin-top:10px;background:rgba(230,184,92,.1);color:#f0d6a0}
+.msg.bad{background:rgba(239,123,108,.12);color:#f5b3aa} .msg.good{background:rgba(60,192,174,.12);color:#9ff0e1}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:10px}
+.kv div{border:1px solid var(--line);border-radius:12px;padding:8px 10px;background:rgba(255,255,255,.04)}
+.kv b{display:block;font-size:17px}.kv span{font-size:12px;color:var(--ink-3)}
+#hmap{height:380px;border-radius:16px;background:#0d222b}
+.leaflet-control-attribution{background:rgba(10,26,33,.7)!important;color:var(--ink-3)!important;font-size:10px}
+.login{min-height:80vh;display:grid;place-items:center}
+.login form{width:100%;max-width:360px;padding:24px}
+.login h2{font-size:20px;margin-bottom:6px}.login p{font-size:13px;color:var(--ink-2);margin-bottom:14px}
+.login input{width:100%;margin-bottom:10px}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<i class="blob a"></i><i class="blob b"></i><i class="blob c"></i>
+<div class="wrap">
+
+<div class="login hidden" id="login">
+  <form class="glass" id="loginForm">
+    <h2>ورود مدیر</h2><p id="loginHint">رمز مدیر را وارد کنید.</p>
+    <input type="password" id="pw" autocomplete="current-password" placeholder="رمز" required>
+    <button class="btn primary" style="width:100%;height:44px" type="submit">ورود</button>
+    <div class="msg bad hidden" id="loginErr" role="alert"></div>
+  </form>
+</div>
+
+<div id="app" class="hidden" style="display:flex;flex-direction:column;gap:14px">
+  <header class="glass">
+    <h1>پنل مدیریت قیمت متر</h1>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" data-t="sum" aria-selected="true">خلاصه</button>
+      <button class="tab" role="tab" data-t="users" aria-selected="false">کاربران</button>
+      <button class="tab" role="tab" data-t="data" aria-selected="false">داده</button>
+      <button class="tab" role="tab" data-t="picks" aria-selected="false">نقاط پرتقاضا</button>
+    </div>
+    <button class="btn" id="logout">خروج</button>
+  </header>
+
+  <!-- خلاصه -->
+  <section class="panel on" id="p-sum">
+    <div class="cards" id="cards"></div>
+    <div class="grid2">
+      <div class="box glass"><h2>ثبت‌نام در ۳۰ روز اخیر</h2><div id="chReg"></div></div>
+      <div class="box glass"><h2>نقطه‌های انتخاب‌شده روی نقشه در ۳۰ روز اخیر</h2><div id="chPick"></div></div>
+    </div>
+    <div class="box glass"><h2>وضعیت فایل داده‌ی فعلی</h2><div id="sumData" class="m">در حال خواندن…</div></div>
+  </section>
+
+  <!-- کاربران -->
+  <section class="panel" id="p-users">
+    <div class="box glass">
+      <div class="bar"><input type="search" id="q" placeholder="جست‌وجوی نام کاربری یا شماره"><button class="btn" id="exp">خروجی اکسل</button></div>
+      <div class="m" id="ucount" style="font-size:13px;color:var(--ink-2);margin-bottom:8px"></div>
+      <div class="tbl"><table><thead><tr><th>نام کاربری</th><th>موبایل</th><th>تاریخ ثبت‌نام</th><th>وضعیت</th><th></th></tr></thead><tbody id="utb"></tbody></table></div>
+    </div>
+  </section>
+
+  <!-- داده -->
+  <section class="panel" id="p-data">
+    <div class="box glass"><h2>فایل فعلی</h2><div id="curData" class="m">در حال خواندن…</div></div>
+    <div class="box glass">
+      <h2>بارگذاری فایل جدید</h2>
+      <p class="m">فایل xlsx را انتخاب کنید. قبل از جایگزینی، گزارش ردیف‌های قابل استفاده و کنار گذاشته‌شده نشان داده می‌شود. نسخه‌ی قبلی به‌عنوان پشتیبان نگه داشته می‌شود (۵ نسخه‌ی آخر).</p>
+      <div class="bar" style="margin-top:12px"><label class="btn">انتخاب فایل xlsx<input type="file" id="up" accept=".xlsx" hidden></label><button class="btn primary" id="doUp" disabled>جایگزین کردن فایل فعلی</button></div>
+      <div id="upReport"></div>
+    </div>
+  </section>
+
+  <!-- نقاط -->
+  <section class="panel" id="p-picks">
+    <div class="box glass">
+      <h2>نقاطی که کاربران انتخاب کرده‌اند</h2>
+      <p class="m">هر دایره یک خانه‌ی حدود ۲۵۰ متری است. اندازه یعنی تعداد انتخاب. رنگ طلایی یا قرمز یعنی بیشتر انتخاب‌ها آگهی کافی نداشته‌اند و باید داده‌ی آن محدوده را تکمیل کنید.</p>
+      <div class="bar" style="margin:12px 0 10px"><button class="tab" data-s="n" aria-selected="true">بیشترین انتخاب</button><button class="tab" data-s="low" aria-selected="false">بیشترین کم‌داده</button></div>
+      <div id="hmap"></div>
+      <div class="tbl" style="margin-top:12px;max-height:40vh"><table><thead><tr><th>مختصات مرکز خانه</th><th>تعداد انتخاب</th><th>با داده‌ی ناکافی</th><th>آخرین انتخاب</th></tr></thead><tbody id="ptb"></tbody></table></div>
+    </div>
+  </section>
+</div>
+</div>
+
+<script src="vendor/leaflet.js"></script>
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="listings-core.js"></script>
+<script src="config.js"></script>
+<script>
+(function(){
+"use strict";
+const C = window.APP_CONFIG, $ = id => document.getElementById(id);
+const fa = (n,d=0) => Number(n).toLocaleString("fa-IR",{maximumFractionDigits:d});
+const dt = iso => new Date(iso).toLocaleString("fa-IR",{dateStyle:"medium",timeStyle:"short"});
+const dd = d => new Date(d+"T12:00:00").toLocaleDateString("fa-IR",{month:"short",day:"numeric"});
+function h(tag,attrs,...kids){ const e=document.createElement(tag); for(const k in (attrs||{})){ if(k==="class") e.className=attrs[k]; else if(k.startsWith("on")) e[k]=attrs[k]; else e.setAttribute(k,attrs[k]); } kids.flat().forEach(c=>e.append(c==null?"":c)); return e; }
+
+async function api(path,opt={}){
+  const o={credentials:"same-origin",headers:{},...opt};
+  if(o.method && o.method!=="GET") o.headers={"x-admin":"1",...o.headers};
+  const r = await fetch(path,o);
+  if(r.status===401 && !path.endsWith("/login")){ showLogin(); throw new Error("login"); }
+  let j=null; const ct=r.headers.get("content-type")||""; if(ct.includes("json")) j=await r.json();
+  return {r,j};
+}
+
+/* ----- ورود ----- */
+function showLogin(msg){ $("app").classList.add("hidden"); $("login").classList.remove("hidden"); if(msg){ $("loginHint").textContent=msg; } $("pw").focus(); }
+$("loginForm").onsubmit = async e=>{ e.preventDefault(); const er=$("loginErr"); er.classList.add("hidden");
+  const {r,j}=await api("/api/admin/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:$("pw").value})}).catch(()=>({r:{ok:false},j:null}));
+  if(r.ok){ $("pw").value=""; boot(); } else { er.textContent=(j&&j.error)||"ارتباط با سرور برقرار نشد."; er.classList.remove("hidden"); } };
+$("logout").onclick = async()=>{ await api("/api/admin/logout",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"}).catch(()=>{}); location.reload(); };
+
+/* ----- تب‌ها ----- */
+document.querySelectorAll("[data-t]").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll("[data-t]").forEach(x=>x.setAttribute("aria-selected",x===b));
+  document.querySelectorAll("section.panel").forEach(s=>s.classList.toggle("on",s.id==="p-"+b.dataset.t));
+  ({sum:loadSummary,users:loadUsers,data:loadDataTab,picks:loadPicks})[b.dataset.t]();
+});
+
+/* ----- خلاصه ----- */
+function bars(el,series){
+  const max=Math.max(1,...series.map(x=>x.n)), W=300, bw=W/series.length;
+  const svg=document.createElementNS("http://www.w3.org/2000/svg","svg"); svg.setAttribute("viewBox","0 0 "+W+" 100"); svg.setAttribute("class","chart"); svg.setAttribute("preserveAspectRatio","none");
+  series.forEach((x,i)=>{ const hh=x.n/max*92, r=document.createElementNS(svg.namespaceURI,"rect"); r.setAttribute("x",i*bw+1); r.setAttribute("y",100-hh); r.setAttribute("width",bw-2); r.setAttribute("height",Math.max(hh,x.n?2:0.8)); r.setAttribute("rx","1.5");
+    const t=document.createElementNS(svg.namespaceURI,"title"); t.textContent=dd(x.d)+": "+fa(x.n); r.append(t); svg.append(r); });
+  el.replaceChildren(svg, h("div",{class:"axis"},h("span",{},dd(series[series.length-1].d)),h("span",{},"بیشترین: "+fa(max)),h("span",{},dd(series[0].d))));
+}
+async function loadSummary(){
+  const {j:s}=await api("/api/admin/stats");
+  const lowPct = s.picksTotal ? Math.round(s.picksLow/s.picksTotal*100) : 0;
+  $("cards").replaceChildren(
+    ...[[s.users,"کاربر ثبت‌نام‌شده",""],[s.today,"ثبت‌نام امروز",""],[s.blocked,"کاربر مسدود",""],[s.picksTotal,"نقطه‌ی انتخاب‌شده",""],[fa(lowPct)+"٪","انتخاب‌ها با داده‌ی ناکافی","gold"]]
+    .map(([v,l,c])=>h("div",{class:"card glass "+c},h("b",{},typeof v==="number"?fa(v):v),h("span",{},l))));
+  bars($("chReg"),s.reg30); bars($("chPick"),s.picks30);
+  try{ const rep=await currentReport(); $("sumData").replaceChildren(report(rep)); }catch(e){ $("sumData").textContent=e.message; }
+}
+
+/* ----- گزارش داده ----- */
+const REQUIRED=["اطلاعات","قیمت","latitude","longitude"];
+function analyseRows(rows){
+  const keys = rows.length ? Object.keys(rows[0]).map(k=>ListingsCore.clean(k).toLowerCase()) : [];
+  const missing = REQUIRED.filter(c=>!keys.includes(c.toLowerCase()));
+  const res = ListingsCore.buildListings(rows,C);
+  const years={}; res.list.forEach(l=>years[l.year]=(years[l.year]||0)+1);
+  return {stats:res.stats, missing, years};
+}
+async function currentReport(){
+  const r = await fetch("/api/data",{credentials:"same-origin",cache:"no-store"});
+  if(r.status===404) throw new Error("هنوز فایل داده‌ای بارگذاری نشده است.");
+  if(!r.ok) throw new Error("فایل داده خوانده نشد.");
+  return analyseRows(await ListingsCore.readRows(await r.arrayBuffer(),"x.xlsx",XLSX));
+}
+function report(a){
+  const s=a.stats, skipped=s.rows-s.ok;
+  const box=h("div",{});
+  box.append(h("div",{class:"kv"},
+    h("div",{},h("b",{},fa(s.rows)),h("span",{},"ردیف در فایل")),
+    h("div",{},h("b",{},fa(s.ok)),h("span",{},"قابل استفاده")),
+    h("div",{},h("b",{},fa(skipped)),h("span",{},"کنار گذاشته‌شده")),
+    h("div",{},h("b",{},fa(s.noGeo)),h("span",{},"بدون مختصات")),
+    h("div",{},h("b",{},fa(s.noYear)),h("span",{},"بدون سال ساخت یا متراژ")),
+    h("div",{},h("b",{},fa(s.noPrice+s.mismatch)),h("span",{},"قیمت ناقص یا ناسازگار")),
+    h("div",{},h("b",{},fa(s.outside)),h("span",{},"خارج از مشهد")),
+    h("div",{},h("b",{},fa(s.dup)),h("span",{},"تکراری"))));
+  const ys=Object.keys(a.years).sort((x,y)=>y-x);
+  if(ys.length) box.append(h("p",{class:"m",style:"margin-top:10px"},"تعداد قابل استفاده به تفکیک سال ساخت: "+ys.map(y=>y.replace(/\d/g,d=>"۰۱۲۳۴۵۶۷۸۹"[d])+" ("+fa(a.years[y])+")").join("، ")));
+  if(a.missing.length) box.append(h("div",{class:"msg bad"},"ستون‌های لازم در فایل نیست: "+a.missing.join("، ")));
+  return box;
+}
+
+/* ----- کاربران ----- */
+let usersCache=[], qT=null;
+async function loadUsers(){
+  const q=$("q").value.trim();
+  const {j}=await api("/api/admin/users?q="+encodeURIComponent(q));
+  usersCache=j.users; $("ucount").textContent=q ? fa(j.users.length)+" نتیجه از "+fa(j.total)+" کاربر" : fa(j.total)+" کاربر";
+  $("utb").replaceChildren(...j.users.map(u=>{
+    const btn=h("button",{class:"btn"+(u.blocked?"":" danger")},u.blocked?"رفع مسدودی":"مسدود کردن");
+    btn.onclick=async()=>{ btn.disabled=true; await api("/api/admin/users/block",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:u.id,blocked:!u.blocked})}); loadUsers(); };
+    return h("tr",{},h("td",{},u.username),h("td",{class:"ltr"},u.mobile),h("td",{},dt(u.createdAt)),h("td",{},h("span",{class:"pill"+(u.blocked?" off":"")},u.blocked?"مسدود":"فعال")),h("td",{},btn));
+  }));
+}
+$("q").oninput=()=>{ clearTimeout(qT); qT=setTimeout(loadUsers,250); };
+$("exp").onclick=()=>{
+  const rows=usersCache.map(u=>({"نام کاربری":u.username,"موبایل":u.mobile,"تاریخ ثبت‌نام":dt(u.createdAt),"وضعیت":u.blocked?"مسدود":"فعال"}));
+  const ws=XLSX.utils.json_to_sheet(rows), wb=XLSX.utils.book_new(); ws["!cols"]=[{wch:18},{wch:14},{wch:24},{wch:8}];
+  XLSX.utils.book_append_sheet(wb,ws,"کاربران"); XLSX.writeFile(wb,"users-"+new Date().toISOString().slice(0,10)+".xlsx");
+};
+
+/* ----- داده ----- */
+let pending=null, curOk=0;
+async function loadDataTab(){
+  const {j}=await api("/api/admin/data-info");
+  const box=$("curData");
+  if(!j.exists){ box.textContent="هنوز فایلی بارگذاری نشده است."; curOk=0; return; }
+  box.replaceChildren(h("p",{class:"m"},"آخرین به‌روزرسانی: "+dt(j.mtime)+" — حجم: "+fa(j.size/1024,0)+" کیلوبایت — "+fa(j.backups.length)+" نسخه‌ی پشتیبان"));
+  try{ const rep=await currentReport(); curOk=rep.stats.ok; box.append(report(rep)); }catch(e){ box.append(h("div",{class:"msg bad"},e.message)); }
+}
+$("up").onchange=async e=>{
+  const f=e.target.files[0]; pending=null; $("doUp").disabled=true; const out=$("upReport"); out.replaceChildren();
+  if(!f) return;
+  try{
+    const buf=await f.arrayBuffer(), a=analyseRows(await ListingsCore.readRows(buf,f.name,XLSX));
+    out.append(h("p",{class:"m",style:"margin-top:12px"},"گزارش فایل «"+f.name+"»"),report(a));
+    if(a.missing.length) return;
+    if(a.stats.ok===0){ out.append(h("div",{class:"msg bad"},"هیچ ردیف قابل استفاده‌ای در این فایل نیست. جایگزین نمی‌شود.")); return; }
+    if(curOk && a.stats.ok<curOk*0.5) out.append(h("div",{class:"msg"},"تعداد ردیف‌های قابل استفاده از "+fa(curOk)+" به "+fa(a.stats.ok)+" کم می‌شود. مطمئن شوید فایل درست است."));
+    pending={f,buf}; $("doUp").disabled=false;
+  }catch(err){ out.append(h("div",{class:"msg bad"},"این فایل خوانده نشد: "+err.message)); }
+};
+$("doUp").onclick=async()=>{
+  if(!pending) return; $("doUp").disabled=true;
+  const {r,j}=await api("/api/admin/data",{method:"POST",headers:{"Content-Type":"application/octet-stream"},body:pending.buf});
+  const out=$("upReport");
+  if(r.ok){ out.append(h("div",{class:"msg good"},"فایل جدید جایگزین شد. کاربران از همین لحظه نسخه‌ی جدید را می‌گیرند.")); pending=null; $("up").value=""; loadDataTab(); }
+  else { out.append(h("div",{class:"msg bad"},(j&&j.error)||"جایگزینی انجام نشد.")); $("doUp").disabled=false; }
+};
+
+/* ----- نقاط پرتقاضا ----- */
+let hmap=null, hl=null, sortBy="n", cells=[];
+function initMap(){
+  if(hmap) return;
+  hmap=L.map("hmap",{zoomControl:true}).setView(C.center,C.zoom);
+  const key=(C.mapirKey||"").trim();
+  L.tileLayer(key?C.mapirTileUrlQuery.replace("{key}",encodeURIComponent(key)):C.osmTileUrl,{maxZoom:19,attribution:key?"© map.ir | © OpenStreetMap":"© OpenStreetMap © CARTO"}).addTo(hmap);
+  hl=L.layerGroup().addTo(hmap);
+}
+function drawPicks(){
+  const list=[...cells].sort((a,b)=>b[sortBy]-a[sortBy]);
+  hl.clearLayers();
+  list.forEach(c=>{ const lowShare=c.low/c.n, col=lowShare>=.67?"#ef7b6c":lowShare>=.34?"#e6b85c":"#3cc0ae";
+    L.circle([c.lat,c.lng],{radius:60+Math.sqrt(c.n)*40,color:col,weight:1.5,fillColor:col,fillOpacity:.35})
+     .bindTooltip(fa(c.n)+" انتخاب، "+fa(c.low)+" با داده‌ی ناکافی").addTo(hl); });
+  $("ptb").replaceChildren(...list.slice(0,30).map(c=>h("tr",{},h("td",{class:"ltr"},c.lat.toFixed(4)+" , "+c.lng.toFixed(4)),h("td",{},fa(c.n)),h("td",{},fa(c.low)+" ("+fa(Math.round(c.low/c.n*100))+"٪)"),h("td",{},dt(c.last)))));
+  if(!list.length) $("ptb").replaceChildren(h("tr",{},h("td",{colspan:4},"هنوز نقطه‌ای ثبت نشده است.")));
+}
+async function loadPicks(){
+  initMap(); setTimeout(()=>hmap.invalidateSize(),50);
+  const {j}=await api("/api/admin/picks"); cells=j.cells; drawPicks();
+  if(cells.length) hmap.fitBounds(L.latLngBounds(cells.map(c=>[c.lat,c.lng])).pad(.2),{maxZoom:14});
+}
+document.querySelectorAll("[data-s]").forEach(b=>b.onclick=()=>{ sortBy=b.dataset.s; document.querySelectorAll("[data-s]").forEach(x=>x.setAttribute("aria-selected",x===b)); drawPicks(); });
+
+/* ----- شروع ----- */
+async function boot(){
+  const r=await fetch("/api/admin/session",{credentials:"same-origin"});
+  if(r.status===503){ showLogin((await r.json()).error); $("loginForm").querySelector("button").disabled=true; return; }
+  if(!r.ok){ showLogin(); return; }
+  $("login").classList.add("hidden"); $("app").classList.remove("hidden"); loadSummary();
+}
+boot();
+})();
+</script>
+</body>
+</html>

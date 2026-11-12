@@ -1,0 +1,17 @@
+{
+  "name": "قیمت هر متر مربع",
+  "short_name": "قیمت متر",
+  "description": "میانگین قیمت هر متر مربع ملک در نقطه‌ی انتخاب‌شده‌ی مشهد",
+  "lang": "fa",
+  "dir": "rtl",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0a1a21",
+  "theme_color": "#0a1a21",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
