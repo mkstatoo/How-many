@@ -139,7 +139,7 @@ function initPublic(){
     else commitPublic(makePublic(fs.readFileSync(DATA_FILE)));
   }catch(e){ if(e.code!=="ENOENT") console.error("نسخه‌ی عمومی داده ساخته نشد:",e.message); }
 }
-initPublic();
+// ساخت نسخه‌ی عمومی بعد از بالا آمدن سرور انجام می‌شود (برای فایل‌های بزرگ چند ثانیه طول می‌کشد)
 
 // داده فقط برای کاربر ثبت‌نام‌شده و غیرمسدود (یا مدیر)؛ و فقط نسخه‌ی پاک‌شده
 function serveData(req,res){
@@ -149,7 +149,7 @@ function serveData(req,res){
     if(u.blocked) return send(res,403,{error:"دسترسی حساب شما بسته شده است.",code:"blocked"});
     if(limited("data:"+u.id,20,60000)) return send(res,429,{error:"درخواست زیاد است. کمی بعد دوباره امتحان کنید."});
   }
-  if(!publicJson) return send(res,404,{error:"فایل داده هنوز بارگذاری نشده است."});
+  if(!publicJson){ if(fs.existsSync(DATA_FILE)) return send(res,503,{error:"داده در حال آماده‌سازی است."}); return send(res,404,{error:"فایل داده هنوز بارگذاری نشده است."}); }
   res.writeHead(200,{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store"}); res.end(publicJson.buf);
 }
 
@@ -286,5 +286,6 @@ http.createServer(async (req,res)=>{
   }catch(e){ console.error(e); if(!res.headersSent) send(res,500,{error:"خطای سرور"}); else res.end(); }
 }).listen(PORT,HOST,()=>{
   console.log("http://"+HOST+":"+PORT);
+  setImmediate(initPublic);
   console.log(ADMIN_ON ? "پنل مدیر: /admin.html" : "هشدار: ADMIN_PASSWORD (حداقل ۸ کاراکتر) تنظیم نشده؛ پنل مدیر غیرفعال است.");
 });

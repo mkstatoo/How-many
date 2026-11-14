@@ -400,6 +400,10 @@ async function load(fresh){
     if(local){
       $("dataInfo").textContent="فایل داده خوانده نشد";
       $("loaderMsg").textContent="صفحه مستقیم از روی فایل باز شده و مرورگر اجازه‌ی خواندن data/listings.xlsx را نمی‌دهد. یک‌بار فایل داده را انتخاب کنید تا در همین مرورگر ذخیره شود. روی سرور این مرحله لازم نیست.";
+    }else if(String(e.message).includes("503")){
+      $("dataInfo").textContent="داده در حال آماده‌سازی است";
+      $("loaderTitle").textContent="چند لحظه صبر کنید";
+      $("loaderMsg").textContent="داده‌ها در حال آماده‌سازی است. چند ثانیه بعد صفحه را دوباره باز کنید.";
     }else if(String(e.message).includes("404")){
       $("dataInfo").textContent="داده هنوز آماده نیست";
       $("loaderTitle").textContent="داده‌ها هنوز بارگذاری نشده است";

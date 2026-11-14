@@ -92,10 +92,10 @@ EOF
 systemctl daemon-reload
 systemctl enable arzesh >/dev/null
 systemctl restart arzesh
-for i in 1 2 3 4 5 6 7 8 9 10; do
+for i in $(seq 1 30); do
   curl -fsS -o /dev/null http://127.0.0.1:8080/index.html && break
   sleep 1
-  [ "$i" = 10 ] && { journalctl -u arzesh -n 30 --no-pager; die "سرویس بالا نیامد."; }
+  [ "$i" = 30 ] && { journalctl -u arzesh -n 30 --no-pager; die "سرویس بالا نیامد."; }
 done
 echo "سرویس اپ روی 127.0.0.1:8080 بالا آمد."
 
