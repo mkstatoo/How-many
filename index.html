@@ -349,6 +349,7 @@ async function pick(lat,lng){
 }
 map.on("click",e=>pick(e.latlng.lat,e.latlng.lng));
 $("toggle").onclick=()=>{ const s=$("sheet"); s.classList.toggle("open"); $("toggle").setAttribute("aria-expanded",s.classList.contains("open")); renderResult(); };
+if(!window.isSecureContext) $("locate").classList.add("hidden");   // موقعیت‌یابی بدون HTTPS کار نمی‌کند
 $("locate").onclick=()=>{
   if(!navigator.geolocation) return toast("مرورگر شما موقعیت‌یابی را پشتیبانی نمی‌کند.");
   navigator.geolocation.getCurrentPosition(p=>{ map.setView([p.coords.latitude,p.coords.longitude],16); pick(p.coords.latitude,p.coords.longitude); },

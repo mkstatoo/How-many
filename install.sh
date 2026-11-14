@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 # نصب اپ قیمت متر روی Debian 12 / Ubuntu (با دسترسی root).
 #   bash install.sh <دامنه> <رمز-مدیر> <ایمیل> [کلید-mapir]
-# نمونه:
+#   bash install.sh -  <رمز-مدیر>  [-]  [کلید-mapir]      ← بدون دامنه (فقط با IP و HTTP)
+# نمونه‌ها:
 #   bash install.sh price.example.ir 'Admin_Pass-2026' me@example.com
+#   bash install.sh - 'Admin_Pass-2026'
+# در حالت بدون دامنه، صفحه‌ی مدیر از اینترنت بسته است و فقط با تونل SSH باز می‌شود
+# (برای باز کردن عمومی، قبل از اجرا ALLOW_PUBLIC_ADMIN=1 بگذارید؛ توصیه نمی‌شود).
 # دوباره اجرا کردنش امن است: کاربران (storage) و فایل داده (data) را بازنویسی نمی‌کند.
 set -euo pipefail
 
@@ -11,9 +15,15 @@ say(){ echo; echo "==> $*"; }
 
 [ "$(id -u)" = 0 ] || die "با کاربر root اجرا کنید (یا با sudo)."
 DOMAIN="${1:-}"; PASS="${2:-}"; EMAIL="${3:-}"; MAPKEY="${4:-}"
-[ -n "$DOMAIN" ] && [ -n "$PASS" ] && [ -n "$EMAIL" ] || die "نحوه‌ی اجرا: bash install.sh <دامنه> <رمز-مدیر> <ایمیل> [کلید-mapir]"
-[[ "$DOMAIN" =~ ^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$ ]] || die "دامنه معتبر نیست (مثل price.example.ir، بدون http)."
-[[ "$EMAIL" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]] || die "ایمیل معتبر نیست."
+[ "$EMAIL" = "-" ] && EMAIL=""
+[ "$MAPKEY" = "-" ] && MAPKEY=""
+[ -n "$DOMAIN" ] && [ -n "$PASS" ] || die "نحوه‌ی اجرا: bash install.sh <دامنه یا -> <رمز-مدیر> [ایمیل] [کلید-mapir]"
+MODE=domain; [ "$DOMAIN" = "-" ] && MODE=ip
+if [ "$MODE" = domain ]; then
+  [ -n "$EMAIL" ] || die "برای حالت دامنه ایمیل هم لازم است (برای هشدار انقضای گواهی)."
+  [[ "$DOMAIN" =~ ^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$ ]] || die "دامنه معتبر نیست (مثل price.example.ir، بدون http)."
+  [[ "$EMAIL" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]] || die "ایمیل معتبر نیست."
+fi
 [[ "$PASS" =~ ^[A-Za-z0-9._@%+=:,!~^-]{8,64}$ ]] || die "رمز مدیر باید ۸ تا ۶۴ کاراکتر باشد و فقط شامل حروف لاتین، عدد و این نمادها: . _ @ % + = : , ! ~ ^ -"
 if [ -n "$MAPKEY" ]; then [[ "$MAPKEY" =~ ^[A-Za-z0-9._-]+$ ]] || die "کلید map.ir شکل نامعتبر دارد."; fi
 
@@ -21,10 +31,13 @@ SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP=/opt/arzesh-app
 [ -f "$SRC/server.js" ] && [ -f "$SRC/index.html" ] || die "این اسکریپت باید کنار server.js و index.html اجرا شود."
 
-say "نصب بسته‌ها (nodejs، nginx، certbot)"
+say "نصب بسته‌ها"
 export DEBIAN_FRONTEND=noninteractive
+PKGS="nodejs nginx rsync curl ca-certificates"
+[ "$MODE" = domain ] && PKGS="$PKGS certbot python3-certbot-nginx"
 apt-get update -y
-apt-get install -y nodejs nginx certbot python3-certbot-nginx rsync curl ca-certificates
+# shellcheck disable=SC2086
+apt-get install -y $PKGS
 NODEV="$(node -p 'process.versions.node.split(".")[0]')"
 [ "$NODEV" -ge 16 ] || die "نسخه‌ی Node ($(node -v)) قدیمی است؛ ۱۶ یا بالاتر لازم است."
 
@@ -78,13 +91,24 @@ for i in 1 2 3 4 5 6 7 8 9 10; do
 done
 echo "سرویس اپ روی 127.0.0.1:8080 بالا آمد."
 
-say "nginx برای $DOMAIN"
+say "nginx"
+LISTEN_EXTRA=""; SNAME="$DOMAIN"; ADMIN_BLOCK=""
+if [ "$MODE" = ip ]; then
+  # بدون دامنه: این سایت پیش‌فرض پورت ۸۰ می‌شود و سایت نمونه‌ی خود nginx کنار گذاشته می‌شود.
+  rm -f /etc/nginx/sites-enabled/default
+  LISTEN_EXTRA=" default_server"; SNAME="_"
+  if [ "${ALLOW_PUBLIC_ADMIN:-0}" != 1 ]; then
+    ADMIN_BLOCK="    location = /admin.html { return 404; }
+    location ^~ /api/admin/ { return 404; }"
+  fi
+fi
 cat > /etc/nginx/sites-available/arzesh <<EOF
 server {
-    listen 80;
-    listen [::]:80;
-    server_name $DOMAIN;
+    listen 80$LISTEN_EXTRA;
+    listen [::]:80$LISTEN_EXTRA;
+    server_name $SNAME;
     client_max_body_size 30m;
+$ADMIN_BLOCK
     location / {
         proxy_pass http://127.0.0.1:8080;
         proxy_set_header Host \$host;
@@ -98,18 +122,21 @@ nginx -t
 systemctl enable nginx >/dev/null
 systemctl reload nginx || systemctl restart nginx
 
-say "گواهی HTTPS (Let's Encrypt)"
-if getent hosts "$DOMAIN" >/dev/null; then
-  if certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "$EMAIL" --redirect; then
-    PROTO=https
+PROTO=http
+if [ "$MODE" = domain ]; then
+  say "گواهی HTTPS (Let's Encrypt)"
+  if getent hosts "$DOMAIN" >/dev/null; then
+    if certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "$EMAIL" --redirect; then
+      PROTO=https
+    else
+      echo "هشدار: گرفتن گواهی HTTPS انجام نشد. اپ فعلاً روی HTTP کار می‌کند (نصب روی گوشی و امنیت رمز مدیر به HTTPS نیاز دارد)."
+      echo "بررسی کنید: رکورد A دامنه روی IP همین سرور باشد و پورت ۸۰ از بیرون باز باشد. بعد دوباره همین اسکریپت را اجرا کنید."
+    fi
   else
-    PROTO=http
-    echo "هشدار: گرفتن گواهی HTTPS انجام نشد. اپ فعلاً روی HTTP کار می‌کند (نصب روی گوشی و امنیت رمز مدیر به HTTPS نیاز دارد)."
-    echo "بررسی کنید: رکورد A دامنه روی IP همین سرور باشد و پورت ۸۰ از بیرون باز باشد. بعد دوباره همین اسکریپت را اجرا کنید."
+    echo "هشدار: دامنه‌ی $DOMAIN هنوز به IP نرسیده (DNS). رکورد A را بسازید، چند دقیقه صبر کنید و دوباره این اسکریپت را اجرا کنید."
   fi
 else
-  PROTO=http
-  echo "هشدار: دامنه‌ی $DOMAIN هنوز به IP نرسیده (DNS). رکورد A را بسازید، چند دقیقه صبر کنید و دوباره این اسکریپت را اجرا کنید."
+  DOMAIN="$(curl -4 -fsS --max-time 8 ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')"
 fi
 
 say "پشتیبان‌گیری روزانه"
@@ -120,7 +147,17 @@ chmod 644 /etc/cron.d/arzesh-backup
 
 say "تمام شد"
 echo "اپ کاربر:   $PROTO://$DOMAIN/"
-echo "پنل مدیر:   $PROTO://$DOMAIN/admin.html   (رمز همان است که دادید)"
+if [ "$MODE" = ip ] && [ "${ALLOW_PUBLIC_ADMIN:-0}" != 1 ]; then
+  echo "پنل مدیر:   از اینترنت بسته است (چون HTTPS ندارید). از کامپیوتر خودتان یک تونل SSH باز کنید:"
+  echo "     ssh -L 8081:127.0.0.1:8080 root@$DOMAIN"
+  echo "   و تا وقتی آن پنجره باز است در مرورگر بزنید: http://localhost:8081/admin.html"
+else
+  echo "پنل مدیر:   $PROTO://$DOMAIN/admin.html   (رمز همان است که دادید)"
+fi
+if [ "$MODE" = ip ]; then
+  echo "هشدار: بدون HTTPS شماره‌ی موبایل و توکن کاربران بدون رمزنگاری عبور می‌کند؛ فقط برای تست."
+  echo "وقتی دامنه آماده شد: bash install.sh <دامنه> <رمز> <ایمیل>"
+fi
 echo "وضعیت سرویس: systemctl status arzesh      لاگ: journalctl -u arzesh -f"
 echo "پشتیبان‌ها: /var/backups/arzesh-*.tgz (۱۴ روز اخیر)"
 [ -n "$MAPKEY" ] || echo "یادآوری: کلید map.ir را در $APP/config.js (mapirKey) بگذارید، بعد: systemctl restart arzesh"
