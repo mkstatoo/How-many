@@ -40,7 +40,7 @@ body{overflow:hidden}
   background:radial-gradient(110% 70% at 18% -10%,rgba(255,255,255,.34),transparent 46%),radial-gradient(80% 55% at 95% 110%,rgba(255,255,255,.12),transparent 52%)}
 .bar{pointer-events:auto;padding:10px 12px;display:flex;align-items:center;gap:10px}
 .bar h1{font-size:15px;font-weight:700;flex:1}
-.bar small{display:block;font-size:11px;font-weight:400;color:var(--ink-3);margin-top:1px}
+.bar small{display:none!important;font-size:11px;font-weight:400;color:var(--ink-3);margin-top:1px}
 .iconbtn{width:38px;height:38px;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:linear-gradient(160deg,rgba(255,255,255,.18),rgba(255,255,255,.04));box-shadow:inset 0 1px 0 rgba(255,255,255,.45);color:var(--ink);display:grid;place-items:center;cursor:pointer;flex:none}
 .iconbtn:focus-visible,.chip:focus-visible,.link:focus-visible,.sheet-toggle:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 .iconbtn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
@@ -145,7 +145,7 @@ body{overflow:hidden}
 </div>
 
 <section class="sheet glass" id="sheet" aria-live="polite">
-  <div class="empty" id="hint"><b>یک نقطه روی نقشه انتخاب کنید</b><br>میانگین قیمت هر متر مربع آگهی‌های اطراف آن نقطه، برای سال ساخت انتخاب‌شده نشان داده می‌شود.</div>
+  <div class="empty" id="hint"><b>یک نقطه روی نقشه انتخاب کنید</b><br>میانگین قیمت هر متر مربع نمونه‌های اطراف آن نقطه، برای سال ساخت انتخاب‌شده نشان داده می‌شود.</div>
   <div id="result" class="hidden">
     <div class="sheet-head">
       <div class="street"><svg viewBox="0 0 24 24"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.5"/></svg><span id="streetName">—</span></div>
@@ -291,8 +291,8 @@ function renderResult(){
   if(!a.sel.length){
     $("avg").textContent="—"; range.innerHTML=""; facts.innerHTML=""; list.innerHTML=""; $("toggle").classList.add("hidden");
     const near = a.cand[0];
-    notes.push('<div class="note bad">برای '+yTxt+' در شعاع '+fa(C.radiiMeters.at(-1)/1000,1)+' کیلومتری این نقطه آگهی‌ای نیست.'+
-      (near ? ' نزدیک‌ترین آگهی '+fa(near.d/1000,1)+' کیلومتر دورتر است.' : (listings.length ? ' برای این سال هیچ آگهی دارای مختصات در داده نیست.' : ''))+'</div>');
+    notes.push('<div class="note bad">برای '+yTxt+' در شعاع '+fa(C.radiiMeters.at(-1)/1000,1)+' کیلومتری این نقطه نمونه‌ای نیست.'+
+      (near ? ' نزدیک‌ترین نمونه '+fa(near.d/1000,1)+' کیلومتر دورتر است.' : (listings.length ? ' برای این سال هیچ نمونه دارای مختصات در داده نیست.' : ''))+'</div>');
     $("notes").innerHTML = notes.join(""); return;
   }
   $("toggle").classList.remove("hidden");
@@ -301,17 +301,17 @@ function renderResult(){
   const pos = v => span>0 ? ((v-a.min)/span*100) : 50;
   range.innerHTML = '<div class="rail"><i style="inset-inline-start:'+pos(a.median)+'%" title="میانه"></i><i class="avg" style="inset-inline-start:'+pos(a.mean)+'%" title="میانگین"></i></div>'+
     '<div class="rail-l"><span>کمترین ' + mil(a.min)+'</span><span>بیشترین '+mil(a.max)+'</span></div>';
-  facts.innerHTML = [[fa(a.sel.length),"آگهی"],[mil(a.median),"میانه (م.ت)"],[fa(a.radius)+" متر","شعاع جست‌وجو"]]
+  facts.innerHTML = [[fa(a.sel.length),"نمونه"],[mil(a.median),"میانه (م.ت)"],[fa(a.radius)+" متر","شعاع جست‌وجو"]]
     .map(x=>'<div class="fact"><b>'+x[0]+'</b><span>'+x[1]+'</span></div>').join("");
 
-  if(a.sel.length<C.minListings) notes.push('<div class="note">فقط '+fa(a.sel.length)+' آگهی در دسترس است؛ این عدد دقت کمی دارد.</div>');
+  if(a.sel.length<C.minListings) notes.push('<div class="note">فقط '+fa(a.sel.length)+' نمونه در دسترس است؛ این عدد دقت کمی دارد.</div>');
   if(streetName){
     const key = clean(streetName), same = a.sel.filter(x=>x.l.street && (clean(x.l.street).includes(key)||key.includes(clean(x.l.street))));
-    if(same.length) notes.push('<div class="note">میانگین آگهی‌های ثبت‌شده برای «'+esc(key)+'»: '+mil(same.reduce((s,x)=>s+x.l.per,0)/same.length)+' میلیون تومان ('+fa(same.length)+' آگهی)</div>');
+    if(same.length) notes.push('<div class="note">میانگین نمونه‌های ثبت‌شده برای «'+esc(key)+'»: '+mil(same.reduce((s,x)=>s+x.l.per,0)/same.length)+' میلیون تومان ('+fa(same.length)+' نمونه)</div>');
   }
   $("notes").innerHTML = notes.join("");
 
-  $("toggle").textContent = $("sheet").classList.contains("open") ? "بستن فهرست" : "نمایش "+fa(a.sel.length)+" آگهی نزدیک ("+yTxt+")";
+  $("toggle").textContent = $("sheet").classList.contains("open") ? "بستن فهرست" : "نمایش "+fa(a.sel.length)+" نمونه نزدیک ("+yTxt+")";
   list.innerHTML = a.sel.map(x=>{   // عنوان و لینک آگهی نمایش داده نمی‌شود (در داده‌ی کاربران هم وجود ندارد)
     const l=x.l, el = document.createElement("div"); el.className="row";
     const p=document.createElement("div"); p.className="p"; p.textContent=mil(l.per)+" میلیون تومان";
