@@ -11,7 +11,8 @@ const STORAGE = path.join(ROOT, "storage");
 const USERS_FILE = path.join(STORAGE, "users.json");
 const PICKS_FILE = path.join(STORAGE, "picks.json");
 const BACKUPS = path.join(STORAGE, "backups");
-const DATA_FILE = path.join(ROOT, "data", "listings.xlsx");
+const DATA_FILE = path.join(ROOT, "data", "listings.xlsx");        // فایل کامل (عنوان و لینک آگهی دارد): فقط برای مدیر
+const PUBLIC_FILE = path.join(STORAGE, "public-data.json");        // نسخه‌ی پاک‌شده برای کاربران: بدون عنوان و لینک
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
 const ADMIN_ON = ADMIN_PASSWORD.length >= 8;
 const BOUNDS = { south: 36.10, north: 36.50, west: 59.35, east: 59.85 };   // باید با config.js یکی باشد
@@ -22,7 +23,7 @@ const MIME = {".html":"text/html; charset=utf-8",".js":"text/javascript; charset
   ".json":"application/json; charset=utf-8",".webmanifest":"application/manifest+json",".png":"image/png",".svg":"image/svg+xml",
   ".woff2":"font/woff2",".ico":"image/x-icon"};
 // این مسیرها هرگز مستقیم سرو نمی‌شوند. داده فقط از /api/data و با ثبت‌نام.
-const BLOCKED = /^\/(storage|data|server\.js|package\.json|readme\.md)(\/|$)/i;
+const BLOCKED = /^\/(storage|data|server\.js|package\.json|readme\.md|install\.sh|node_modules)(\/|$)|(^|\/)\./i;   // پوشه‌های داخلی و هر فایل/پوشه‌ی نقطه‌دار (.git و...)
 
 /* ---------- نرمال‌سازی و اعتبارسنجی (همان منطق سمت کاربر) ---------- */
 const latinDigits = s => String(s).replace(/[۰-۹]/g,c=>"۰۱۲۳۴۵۶۷۸۹".indexOf(c)).replace(/[٠-٩]/g,c=>"٠١٢٣٤٥٦٧٨٩".indexOf(c));
@@ -42,7 +43,7 @@ const tehranDay = (d = new Date()) => d.toLocaleDateString("en-CA", { timeZone: 
 
 /* ---------- ذخیره‌سازی ---------- */
 function readJson(file, fallback){ try{ return JSON.parse(fs.readFileSync(file,"utf8")); }catch(e){ return fallback; } }
-function writeJson(file, obj){ fs.mkdirSync(path.dirname(file),{recursive:true}); const t=file+".tmp"; fs.writeFileSync(t, JSON.stringify(obj,null,1)); fs.renameSync(t,file); }
+function writeJson(file, obj){ fs.mkdirSync(path.dirname(file),{recursive:true,mode:0o700}); const t=file+".tmp"; fs.writeFileSync(t, JSON.stringify(obj,null,1)); fs.renameSync(t,file); }
 let users = readJson(USERS_FILE, []);
 const byToken = new Map(); users.forEach(u=>{ if(u.th) byToken.set(u.th,u); });
 let picks = readJson(PICKS_FILE, {cells:{}, daily:{}});
@@ -60,6 +61,11 @@ function limited(key, max, windowMs){
 setInterval(()=>{ const now=Date.now(); for(const [k,v] of buckets) if(!v.length || now-v[v.length-1]>600000) buckets.delete(k); }, 60000).unref();
 
 /* ---------- کمکی‌ها ---------- */
+const CSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://map.ir https://*.basemaps.cartocdn.com; "+
+  "connect-src 'self' https://map.ir https://*.basemaps.cartocdn.com; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+const SEC = {"Content-Security-Policy":CSP,"X-Content-Type-Options":"nosniff","X-Frame-Options":"DENY","Referrer-Policy":"no-referrer",
+  "Permissions-Policy":"geolocation=(self), camera=(), microphone=()","Cross-Origin-Opener-Policy":"same-origin"};
+const secHeaders = req => (req && isHttps(req)) ? {...SEC,"Strict-Transport-Security":"max-age=15552000"} : SEC;
 function send(res, code, obj, headers){ res.writeHead(code,{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store",...(headers||{})}); res.end(JSON.stringify(obj)); }
 function noContent(res){ res.writeHead(204,{"Cache-Control":"no-store"}); res.end(); }
 function readBody(req, limit){
@@ -105,17 +111,46 @@ async function register(req,res){
   send(res,201,{id:user.id, username:user.username, token});
 }
 
-// داده فقط برای کاربر ثبت‌نام‌شده و غیرمسدود (یا مدیر)
+/* ---------- نسخه‌ی عمومی داده ----------
+   فایل xlsx مدیر عنوان و لینک آگهی دارد. به کاربران فقط این نسخه‌ی پاک‌شده داده می‌شود:
+   متراژ، سال ساخت، قیمت هر متر، مختصات (گردشده به ≈۱۱ متر) و نام معبر. عنوان و لینک هرگز از سرور خارج نمی‌شود. */
+let publicJson = null;
+function loadConfig(){
+  try{ const w={}; new Function("window", fs.readFileSync(path.join(ROOT,"config.js"),"utf8"))(w); if(w.APP_CONFIG && w.APP_CONFIG.bounds) return w.APP_CONFIG; }catch(e){ console.error("config.js خوانده نشد:",e.message); }
+  return {bounds:BOUNDS, maxPriceMismatch:0.03};
+}
+function makePublic(buf){
+  const XLSX = require("./vendor/xlsx.full.min.js"), Core = require("./listings-core.js");
+  const wb = XLSX.read(buf,{type:"buffer"});
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:null,raw:true});
+  const {list,stats} = Core.buildListings(rows, loadConfig());
+  return {v:1, built:new Date().toISOString(), stats,
+    list:list.map(l=>({a:l.area, y:l.year, p:l.per, la:+l.lat.toFixed(4), lo:+l.lng.toFixed(4), s:l.street||""}))};
+}
+function commitPublic(pub){
+  fs.mkdirSync(STORAGE,{recursive:true,mode:0o700});
+  const t = PUBLIC_FILE+".tmp"; fs.writeFileSync(t, JSON.stringify(pub)); fs.renameSync(t, PUBLIC_FILE);
+  publicJson = {buf:Buffer.from(JSON.stringify(pub)), stats:pub.stats, built:pub.built};
+}
+function initPublic(){
+  try{
+    const dm = fs.statSync(DATA_FILE).mtimeMs; let pm = 0; try{ pm = fs.statSync(PUBLIC_FILE).mtimeMs; }catch(e){}
+    if(pm >= dm){ const pub = JSON.parse(fs.readFileSync(PUBLIC_FILE,"utf8")); publicJson = {buf:Buffer.from(JSON.stringify(pub)), stats:pub.stats, built:pub.built}; }
+    else commitPublic(makePublic(fs.readFileSync(DATA_FILE)));
+  }catch(e){ if(e.code!=="ENOENT") console.error("نسخه‌ی عمومی داده ساخته نشد:",e.message); }
+}
+initPublic();
+
+// داده فقط برای کاربر ثبت‌نام‌شده و غیرمسدود (یا مدیر)؛ و فقط نسخه‌ی پاک‌شده
 function serveData(req,res){
   const admin = isAdmin(req), u = userFrom(req);
   if(!admin){
     if(!u) return send(res,401,{error:"ابتدا ثبت‌نام کنید.",code:"unregistered"});
     if(u.blocked) return send(res,403,{error:"دسترسی حساب شما بسته شده است.",code:"blocked"});
+    if(limited("data:"+u.id,20,60000)) return send(res,429,{error:"درخواست زیاد است. کمی بعد دوباره امتحان کنید."});
   }
-  fs.readFile(DATA_FILE,(err,buf)=>{
-    if(err) return send(res,404,{error:"فایل داده هنوز بارگذاری نشده است."});
-    res.writeHead(200,{"Content-Type":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","Cache-Control":"no-store"}); res.end(buf);
-  });
+  if(!publicJson) return send(res,404,{error:"فایل داده هنوز بارگذاری نشده است."});
+  res.writeHead(200,{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store"}); res.end(publicJson.buf);
 }
 
 // شمارش ناشناس نقاط انتخابی: فقط خانه‌ی ≈۲۵۰ متری ذخیره می‌شود، نه کاربر و نه مختصات دقیق
@@ -198,20 +233,27 @@ async function adminApi(req,res,url,qs){
   if(url==="/api/admin/data-info"){
     let info = {exists:false}; try{ const st=fs.statSync(DATA_FILE); info={exists:true,size:st.size,mtime:st.mtime.toISOString()}; }catch(e){}
     let backups=[]; try{ backups = fs.readdirSync(BACKUPS).filter(f=>f.endsWith(".xlsx")).sort().reverse().map(f=>({name:f,size:fs.statSync(path.join(BACKUPS,f)).size})); }catch(e){}
-    return send(res,200,{...info,backups});
+    return send(res,200,{...info,backups,usable:publicJson?publicJson.stats.ok:0,rows:publicJson?publicJson.stats.rows:0});
+  }
+  if(url==="/api/admin/data-file" && req.method==="GET"){
+    return fs.readFile(DATA_FILE,(err,buf)=>{ if(err) return send(res,404,{error:"فایل داده هنوز بارگذاری نشده است."});
+      res.writeHead(200,{"Content-Type":"application/octet-stream","Cache-Control":"no-store"}); res.end(buf); });
   }
   if(url==="/api/admin/data" && req.method==="POST"){
     let buf; try{ buf = await readBody(req,MAX_UPLOAD); }catch(e){ return send(res,413,{error:"حجم فایل بیش از ۲۵ مگابایت است."}); }
     if(buf.length<100 || buf.readUInt32LE(0)!==0x04034b50) return send(res,400,{error:"فایل xlsx معتبر نیست."});
+    let pub; try{ pub = makePublic(buf); }catch(e){ console.error("parse failed:",e.message); return send(res,400,{error:"این فایل خوانده نشد؛ xlsx سالم نیست."}); }
+    if(!pub.stats.ok) return send(res,400,{error:"هیچ ردیف قابل استفاده‌ای در این فایل نیست. جایگزین نشد."});
     try{
-      fs.mkdirSync(path.dirname(DATA_FILE),{recursive:true}); fs.mkdirSync(BACKUPS,{recursive:true});
+      fs.mkdirSync(path.dirname(DATA_FILE),{recursive:true}); fs.mkdirSync(BACKUPS,{recursive:true,mode:0o700});
       if(fs.existsSync(DATA_FILE)){
         fs.copyFileSync(DATA_FILE, path.join(BACKUPS,"listings-"+new Date().toISOString().replace(/[:.]/g,"-")+".xlsx"));
         fs.readdirSync(BACKUPS).filter(f=>f.endsWith(".xlsx")).sort().reverse().slice(5).forEach(f=>fs.unlinkSync(path.join(BACKUPS,f)));
       }
       const t=DATA_FILE+".tmp"; fs.writeFileSync(t,buf); fs.renameSync(t,DATA_FILE);
+      commitPublic(pub);
     }catch(e){ console.error("upload failed:",e.message); return send(res,500,{error:"ذخیره‌ی فایل انجام نشد."}); }
-    return send(res,200,{ok:true,size:buf.length});
+    return send(res,200,{ok:true,size:buf.length,usable:pub.stats.ok,rows:pub.stats.rows});
   }
   send(res,404,{error:"پیدا نشد."});
 }
@@ -233,6 +275,7 @@ function serveStatic(req,res){
 
 http.createServer(async (req,res)=>{
   try{
+    const sh = secHeaders(req); for(const k in sh) res.setHeader(k, sh[k]);
     const u = new URL(req.url,"http://x"), url = u.pathname;
     if(url==="/api/register"){ if(req.method==="POST") return await register(req,res); res.writeHead(405,{Allow:"POST"}); return res.end(); }
     if(url==="/api/data"){ if(req.method==="GET") return serveData(req,res); res.writeHead(405,{Allow:"GET"}); return res.end(); }

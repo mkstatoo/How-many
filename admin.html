@@ -206,7 +206,7 @@ function analyseRows(rows){
   return {stats:res.stats, missing, years};
 }
 async function currentReport(){
-  const r = await fetch("/api/data",{credentials:"same-origin",cache:"no-store"});
+  const r = await fetch("/api/admin/data-file",{credentials:"same-origin",cache:"no-store"});
   if(r.status===404) throw new Error("هنوز فایل داده‌ای بارگذاری نشده است.");
   if(!r.ok) throw new Error("فایل داده خوانده نشد.");
   return analyseRows(await ListingsCore.readRows(await r.arrayBuffer(),"x.xlsx",XLSX));

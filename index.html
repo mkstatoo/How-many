@@ -46,7 +46,7 @@ body{overflow:hidden}
 .iconbtn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .chips{pointer-events:auto;display:flex;gap:6px;overflow-x:auto;padding:8px 10px;scrollbar-width:none;align-items:center}
 .chips::-webkit-scrollbar{display:none}
-.chips .lbl{font-size:12px;color:var(--ink-3);flex:none;padding-inline-end:2px}
+.chips .lbl{font-size:13px;font-weight:700;color:#fff;flex:none;padding-inline-end:2px}
 .chip{flex:none;border:1px solid rgba(255,255,255,.16);background:linear-gradient(160deg,rgba(255,255,255,.16),rgba(255,255,255,.04));box-shadow:inset 0 1px 0 rgba(255,255,255,.35);color:var(--ink-2);font:inherit;font-size:13px;padding:5px 12px;border-radius:999px;cursor:pointer;transition:background .15s,color .15s,border-color .15s}
 .chip[aria-pressed=true]{background:linear-gradient(160deg,#f3cf86,var(--gold));box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 4px 14px rgba(230,184,92,.35);border-color:var(--gold);color:#241a05;font-weight:700}
 .chip.tol[aria-pressed=true]{background:linear-gradient(160deg,#6fe0cf,var(--teal));border-color:var(--teal);color:#04241f}
@@ -74,7 +74,7 @@ body{overflow:hidden}
 .sheet-toggle{margin:0 16px 10px;border:0;background:none;color:var(--teal);font:inherit;font-size:13px;text-align:start;cursor:pointer;padding:4px 0}
 .list{overflow:auto;border-top:1px solid var(--glass-line);padding:4px 16px 10px;display:none}
 .sheet.open .list{display:block}
-.row{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:9px 0;border-bottom:1px solid var(--glass-line);font-size:13px}
+.row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:2px 10px;padding:9px 0;border-bottom:1px solid var(--glass-line);font-size:13px}
 .row:last-child{border:0}
 .row .t{color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .row .p{font-weight:700;color:var(--gold);text-align:end}
@@ -200,7 +200,7 @@ const readWorkbook = (buf, name) => window.ListingsCore.readRows(buf, name, XLSX
 
 /* ---------- state ---------- */
 let listings = [], stats = null;
-let year = C.defaultYear, tol = false;
+const years = new Set([C.defaultYear]); let tol = false;   // چند سال ساخت را می‌شود هم‌زمان انتخاب کرد؛ خالی = همه
 let point = null, streetName = "", revToken = 0;
 const map = L.map("map",{zoomControl:false,attributionControl:true,preferCanvas:true}).setView(C.center,C.zoom);
 const selLayer = L.layerGroup().addTo(map);
@@ -248,7 +248,10 @@ function dist(a,b,c,d){ const R=6371000,t=Math.PI/180,dl=(c-a)*t,dn=(d-b)*t;
   const h=Math.sin(dl/2)**2+Math.cos(a*t)*Math.cos(c*t)*Math.sin(dn/2)**2; return 2*R*Math.asin(Math.sqrt(h)); }
 
 /* ---------- queries ---------- */
-const matchYear = l => year==null ? true : (tol ? Math.abs(l.year-year)<=C.yearTolerance : l.year===year);
+const matchYear = l => { if(!years.size) return true; const t = tol ? C.yearTolerance : 0; for(const y of years) if(Math.abs(l.year-y)<=t) return true; return false; };
+const fy = y => String(y).replace(/\d/g,d=>"۰۱۲۳۴۵۶۷۸۹"[d]);
+const esc = x => String(x).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const yearsTxt = () => !years.size ? "همه سال‌ها" : "سال ساخت "+[...years].sort((a,b)=>b-a).map(fy).join("، ")+(tol?" (±"+fa(C.yearTolerance)+")":"");
 
 function analyse(lat,lng){
   const cand = listings.filter(matchYear).map(l=>({l,d:dist(lat,lng,l.lat,l.lng)})).sort((a,b)=>a.d-b.d);
@@ -266,9 +269,9 @@ function renderChips(){
   yrs.sort((a,b)=>b-a);
   const box = $("chips"); box.innerHTML = "";
   const mk = (label, pressed, cls, fn) => { const b=document.createElement("button"); b.className="chip "+(cls||""); b.type="button"; b.textContent=label; b.setAttribute("aria-pressed",pressed); b.onclick=fn; return b; };
-  const lbl = document.createElement("span"); lbl.className="lbl"; lbl.textContent="سال ساخت"; box.appendChild(lbl);
-  yrs.forEach(y=>box.appendChild(mk(String(y).replace(/\d/g,d=>"۰۱۲۳۴۵۶۷۸۹"[d]), year===y, "", ()=>{year=y; refresh();})));
-  box.appendChild(mk("همه", year==null, "", ()=>{year=null; refresh();}));
+  const lbl = document.createElement("span"); lbl.className="lbl"; lbl.textContent="سال ساخت:"; box.appendChild(lbl);
+  yrs.forEach(y=>box.appendChild(mk(fy(y), years.has(y), "", ()=>{ if(years.has(y)) years.delete(y); else years.add(y); refresh(); })));
+  box.appendChild(mk("همه", years.size===0, "", ()=>{ years.clear(); refresh(); }));
   const s=document.createElement("span"); s.className="sep"; box.appendChild(s);
   box.appendChild(mk("±"+fa(C.yearTolerance)+" سال", tol, "tol", ()=>{tol=!tol; refresh();}));
 }
@@ -277,7 +280,7 @@ function renderResult(){
   if(!point){ $("hint").classList.remove("hidden"); $("result").classList.add("hidden"); return; }
   $("hint").classList.add("hidden"); $("result").classList.remove("hidden");
   const a = analyse(point.lat, point.lng);
-  const yTxt = year==null ? "همه سال‌ها" : "سال ساخت "+fa(year).replace(/٬/g,"")+(tol?" (±"+fa(C.yearTolerance)+")":"");
+  const yTxt = yearsTxt();
   $("streetName").textContent = streetName || (useMapir ? "نام معبر در دسترس نیست" : "نام معبر با کلید map.ir نمایش داده می‌شود");
 
   selLayer.clearLayers();
@@ -304,19 +307,16 @@ function renderResult(){
   if(a.sel.length<C.minListings) notes.push('<div class="note">فقط '+fa(a.sel.length)+' آگهی در دسترس است؛ این عدد دقت کمی دارد.</div>');
   if(streetName){
     const key = clean(streetName), same = a.sel.filter(x=>x.l.street && (clean(x.l.street).includes(key)||key.includes(clean(x.l.street))));
-    if(same.length) notes.push('<div class="note">میانگین آگهی‌های ثبت‌شده برای «'+key+'»: '+mil(same.reduce((s,x)=>s+x.l.per,0)/same.length)+' میلیون تومان ('+fa(same.length)+' آگهی)</div>');
+    if(same.length) notes.push('<div class="note">میانگین آگهی‌های ثبت‌شده برای «'+esc(key)+'»: '+mil(same.reduce((s,x)=>s+x.l.per,0)/same.length)+' میلیون تومان ('+fa(same.length)+' آگهی)</div>');
   }
   $("notes").innerHTML = notes.join("");
 
-  $("toggle").textContent = $("sheet").classList.contains("open") ? "بستن فهرست آگهی‌ها" : "نمایش "+fa(a.sel.length)+" آگهی نزدیک ("+yTxt+")";
-  list.innerHTML = a.sel.map(x=>{
-    const l=x.l, safeUrl = /^https?:\/\//.test(l.url||"") ? l.url : "";
-    const el = document.createElement("div"); el.className="row";
-    const t=document.createElement("div"); t.className="t"; t.textContent=l.title||"بدون عنوان";
-    const p=document.createElement("div"); p.className="p"; p.textContent=mil(l.per)+" م.ت";
-    const m=document.createElement("div"); m.className="m"; m.textContent=fa(l.area)+" متر · ساخت "+String(l.year).replace(/\d/g,d=>"۰۱۲۳۴۵۶۷۸۹"[d])+" · "+fa(x.d)+" متر فاصله";
-    el.append(t,p,m);
-    if(safeUrl){ const a=document.createElement("a"); a.className="link"; a.href=safeUrl; a.target="_blank"; a.rel="noopener noreferrer"; a.textContent="آگهی در دیوار"; el.appendChild(a); }
+  $("toggle").textContent = $("sheet").classList.contains("open") ? "بستن فهرست" : "نمایش "+fa(a.sel.length)+" آگهی نزدیک ("+yTxt+")";
+  list.innerHTML = a.sel.map(x=>{   // عنوان و لینک آگهی نمایش داده نمی‌شود (در داده‌ی کاربران هم وجود ندارد)
+    const l=x.l, el = document.createElement("div"); el.className="row";
+    const p=document.createElement("div"); p.className="p"; p.textContent=mil(l.per)+" میلیون تومان";
+    const m=document.createElement("div"); m.className="m"; m.textContent=fa(l.area)+" متر · ساخت "+fy(l.year)+" · "+fa(x.d)+" متر فاصله";
+    el.append(m,p);
     return el.outerHTML;
   }).join("");
 }
@@ -340,7 +340,7 @@ function track(lat,lng){
   const u = savedUser(); if(!C.pickUrl || !u || !u.token) return;
   const a = analyse(lat,lng);
   fetch(C.pickUrl,{method:"POST",keepalive:true,headers:{"Content-Type":"application/json","x-user-token":u.token},
-    body:JSON.stringify({lat:+lat.toFixed(4),lng:+lng.toFixed(4),year,found:a.sel.length,min:C.minListings})}).catch(()=>{});
+    body:JSON.stringify({lat:+lat.toFixed(4),lng:+lng.toFixed(4),found:a.sel.length,min:C.minListings})}).catch(()=>{});
 }
 async function pick(lat,lng){
   point={lat,lng}; renderResult(); track(lat,lng);
@@ -357,8 +357,14 @@ $("locate").onclick=()=>{
 };
 
 /* ---------- load data ---------- */
-function ingest(rows, label){
-  const res = buildListings(rows); listings=res.list; stats=res.stats; window.__stats=stats; window.__listings=listings;
+function ingestPublic(j){   // نسخه‌ی پاک‌شده‌ی سرور: بدون عنوان و لینک
+  if(!j || !Array.isArray(j.list)) throw new Error("قالب داده نامعتبر است");
+  const list = j.list.map(x=>({area:x.a, year:x.y, per:x.p, lat:x.la, lng:x.lo, street:x.s||"", total:x.a*x.p}));
+  applyData({list, stats:j.stats});
+}
+function ingest(rows, label){ applyData(buildListings(rows)); }
+function applyData(res){
+  listings=res.list; stats=res.stats; window.__stats=stats; window.__listings=listings;
   const s=stats, skipped=s.rows-s.ok-s.dup;
   $("dataInfo").textContent = fa(s.ok)+" آگهی قابل استفاده از "+fa(s.rows)+" ردیف"+(skipped?" — "+fa(skipped)+" ردیف کنار گذاشته شد":"");
   $("dataInfo").title = "بدون مختصات: "+s.noGeo+" | بدون سال/متراژ (زمین و…): "+s.noYear+" | بدون قیمت: "+s.noPrice+" | قیمت ناسازگار: "+s.mismatch+" | خارج از مشهد: "+s.outside+" | تکراری: "+s.dup;
@@ -382,7 +388,8 @@ async function load(fresh){
     if(r.status===403) return showBlocked();
     if(r.status===401 && C.registerUrl){ try{ localStorage.removeItem(USER_KEY); }catch(_){} return location.reload(); }   // حساب روی سرور نیست: ثبت‌نام دوباره
     if(!r.ok) throw new Error("HTTP "+r.status);
-    ingest(await readWorkbook(await r.arrayBuffer(), C.dataUrl), C.dataUrl);
+    if(/json/i.test(r.headers.get("content-type")||"")) ingestPublic(await r.json());
+    else ingest(await readWorkbook(await r.arrayBuffer(), C.dataUrl), C.dataUrl);
   }catch(e){
     const local = location.protocol==="file:";
     if(local){
@@ -454,7 +461,7 @@ $("install").onclick=async()=>{ if(!deferredInstall) return; deferredInstall.pro
 window.addEventListener("appinstalled",()=>$("install").classList.add("hidden"));
 if("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register("sw.js").catch(()=>{});
 
-window.__app = {analyse, setYear:(y,t)=>{year=y;tol=!!t;refresh();}, pick};
+window.__app = {analyse, setYear:(y,t)=>{years.clear(); if(y!=null) (Array.isArray(y)?y:[y]).forEach(v=>years.add(v)); tol=!!t; refresh();}, pick};
 })();
 </script>
 </body>

@@ -45,7 +45,7 @@ say "کپی اپ در $APP"
 id arzesh >/dev/null 2>&1 || useradd --system --home-dir "$APP" --shell /usr/sbin/nologin arzesh
 mkdir -p "$APP"
 if [ "$SRC" != "$APP" ]; then
-  rsync -a --exclude 'storage/' --exclude 'data/' --exclude 'install.sh' "$SRC"/ "$APP"/
+  rsync -a --exclude 'storage/' --exclude 'data/' --exclude 'install.sh' --exclude '.git' --exclude '.gitignore' "$SRC"/ "$APP"/
   if [ ! -f "$APP/data/listings.xlsx" ]; then mkdir -p "$APP/data"; cp -a "$SRC"/data/. "$APP/data/" 2>/dev/null || true; fi
 fi
 mkdir -p "$APP/storage"
@@ -54,6 +54,8 @@ if [ -n "$MAPKEY" ]; then
   grep -q "mapirKey: \"$MAPKEY\"" "$APP/config.js" || die "نشد کلید map.ir را در config.js بنویسم."
 fi
 chown -R arzesh:arzesh "$APP"
+chmod 700 "$APP/storage"   # شماره‌ی موبایل کاربران اینجاست؛ فقط خود سرویس بخواند
+chmod 750 "$APP/data"
 
 say "رمز مدیر و سرویس systemd"
 umask 077
@@ -76,6 +78,12 @@ Restart=always
 RestartSec=3
 NoNewPrivileges=true
 ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
 ReadWritePaths=$APP
 
 [Install]
@@ -141,9 +149,10 @@ fi
 
 say "پشتیبان‌گیری روزانه"
 cat > /etc/cron.d/arzesh-backup <<'EOF'
-0 3 * * * root tar czf /var/backups/arzesh-$(date +\%F).tgz -C /opt/arzesh-app storage data && find /var/backups -name 'arzesh-*.tgz' -mtime +14 -delete
+0 3 * * * root umask 077; tar czf /var/backups/arzesh-$(date +\%F).tgz -C /opt/arzesh-app storage data && find /var/backups -name 'arzesh-*.tgz' -mtime +14 -delete
 EOF
 chmod 644 /etc/cron.d/arzesh-backup
+chmod 600 /var/backups/arzesh-*.tgz 2>/dev/null || true   # پشتیبان‌های قبلی هم فقط برای root
 
 say "تمام شد"
 echo "اپ کاربر:   $PROTO://$DOMAIN/"
