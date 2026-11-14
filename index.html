@@ -384,12 +384,24 @@ async function load(fresh){
     if(!r.ok) throw new Error("HTTP "+r.status);
     ingest(await readWorkbook(await r.arrayBuffer(), C.dataUrl), C.dataUrl);
   }catch(e){
-    const c = await idbGet();
-    if(c){ try{ ingest(await readWorkbook(c.buf, c.name), c.name); $("dataInfo").textContent += " (فایل ذخیره‌شده در این مرورگر)"; return; }catch(_){} }
-    $("dataInfo").textContent="فایل داده خوانده نشد";
-    $("loaderMsg").textContent = location.protocol==="file:"
-      ? "صفحه مستقیم از روی فایل باز شده و مرورگر اجازه‌ی خواندن data/listings.xlsx را نمی‌دهد. یک‌بار فایل داده را انتخاب کنید تا در همین مرورگر ذخیره شود. روی سرور این مرحله لازم نیست."
-      : "مسیر «"+C.dataUrl+"» روی سرور در دسترس نیست ("+e.message+"). مسیر فایل را در config.js بررسی کنید یا فایل را دستی انتخاب کنید.";
+    const local = location.protocol==="file:";
+    if(local){
+      const c = await idbGet();
+      if(c){ try{ ingest(await readWorkbook(c.buf, c.name), c.name); $("dataInfo").textContent += " (فایل ذخیره‌شده در این مرورگر)"; return; }catch(_){} }
+    }
+    $("fileBtn").classList.toggle("hidden", !local);   // روی سرور کاربر فایل انتخاب نمی‌کند؛ فقط مدیر از پنل مدیر آپلود می‌کند
+    if(local){
+      $("dataInfo").textContent="فایل داده خوانده نشد";
+      $("loaderMsg").textContent="صفحه مستقیم از روی فایل باز شده و مرورگر اجازه‌ی خواندن data/listings.xlsx را نمی‌دهد. یک‌بار فایل داده را انتخاب کنید تا در همین مرورگر ذخیره شود. روی سرور این مرحله لازم نیست.";
+    }else if(String(e.message).includes("404")){
+      $("dataInfo").textContent="داده هنوز آماده نیست";
+      $("loaderTitle").textContent="داده‌ها هنوز بارگذاری نشده است";
+      $("loaderMsg").textContent="مدیر سامانه باید فایل داده را از پنل مدیر بارگذاری کند. بعد از آن همه‌ی کاربران بدون هیچ کاری داده را می‌بینند؛ کمی بعد دوباره باز کنید.";
+    }else{
+      $("dataInfo").textContent="اتصال به سرور برقرار نشد";
+      $("loaderTitle").textContent="داده‌ها خوانده نشد";
+      $("loaderMsg").textContent="اتصال اینترنت را بررسی کنید و صفحه را دوباره باز کنید ("+e.message+").";
+    }
     $("loader").classList.remove("hidden"); renderChips();
   }
 }
