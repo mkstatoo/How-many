@@ -124,18 +124,24 @@ function makePublic(buf){
   const wb = XLSX.read(buf,{type:"buffer"});
   const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:null,raw:true});
   const {list,stats} = Core.buildListings(rows, loadConfig());
-  return {v:1, built:new Date().toISOString(), stats,
-    list:list.map(l=>({a:l.area, y:l.year, p:l.per, la:+l.lat.toFixed(4), lo:+l.lng.toFixed(4), s:l.street||""}))};
+  // v2: برای آپارتمان‌ها (t:1) ویژگی‌های مدل قیمت‌گذاری هم می‌آید. عنوان و لینک همچنان هرگز نمی‌آید.
+  return {v:2, built:new Date().toISOString(), stats,
+    list:list.map(l=>{ const o={a:l.area, y:l.year, p:l.per, la:+l.lat.toFixed(4), lo:+l.lng.toFixed(4), s:l.street||""};
+      if(l.apt){ o.t=1; o.r=l.rooms; o.e=l.elev; o.k=l.park; if(l.corner) o.c=1; if(l.urgent) o.u=1; if(l.barter) o.b=1; }
+      return o; })};
 }
+const zlib = require("zlib");
+function mkPublic(pub){ const buf = Buffer.from(JSON.stringify(pub)); return {buf, gz:zlib.gzipSync(buf,{level:9}), stats:pub.stats, built:pub.built}; }
 function commitPublic(pub){
   fs.mkdirSync(STORAGE,{recursive:true,mode:0o700});
   const t = PUBLIC_FILE+".tmp"; fs.writeFileSync(t, JSON.stringify(pub)); fs.renameSync(t, PUBLIC_FILE);
-  publicJson = {buf:Buffer.from(JSON.stringify(pub)), stats:pub.stats, built:pub.built};
+  publicJson = mkPublic(pub);
 }
 function initPublic(){
   try{
     const dm = fs.statSync(DATA_FILE).mtimeMs; let pm = 0; try{ pm = fs.statSync(PUBLIC_FILE).mtimeMs; }catch(e){}
-    if(pm >= dm){ const pub = JSON.parse(fs.readFileSync(PUBLIC_FILE,"utf8")); publicJson = {buf:Buffer.from(JSON.stringify(pub)), stats:pub.stats, built:pub.built}; }
+    const pub = pm >= dm ? JSON.parse(fs.readFileSync(PUBLIC_FILE,"utf8")) : null;
+    if(pub && pub.v===2){ publicJson = mkPublic(pub); }
     else commitPublic(makePublic(fs.readFileSync(DATA_FILE)));
   }catch(e){ if(e.code!=="ENOENT") console.error("نسخه‌ی عمومی داده ساخته نشد:",e.message); }
 }
@@ -150,7 +156,8 @@ function serveData(req,res){
     if(limited("data:"+u.id,20,60000)) return send(res,429,{error:"درخواست زیاد است. کمی بعد دوباره امتحان کنید."});
   }
   if(!publicJson){ if(fs.existsSync(DATA_FILE)) return send(res,503,{error:"داده در حال آماده‌سازی است."}); return send(res,404,{error:"فایل داده هنوز بارگذاری نشده است."}); }
-  res.writeHead(200,{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store"}); res.end(publicJson.buf);
+  const gz = /\bgzip\b/.test(req.headers["accept-encoding"]||"");
+  res.writeHead(200,{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store","Vary":"Accept-Encoding",...(gz?{"Content-Encoding":"gzip"}:{})}); res.end(gz?publicJson.gz:publicJson.buf);
 }
 
 // شمارش ناشناس نقاط انتخابی: فقط خانه‌ی ≈۲۵۰ متری ذخیره می‌شود، نه کاربر و نه مختصات دقیق
@@ -259,17 +266,28 @@ async function adminApi(req,res,url,qs){
 }
 
 /* ---------- فایل‌های ایستا ---------- */
+const STATIC_CACHE = new Map();
 function serveStatic(req,res){
   let p; try{ p = decodeURIComponent(new URL(req.url,"http://x").pathname); }catch(e){ res.writeHead(400); return res.end(); }
   if(p.endsWith("/")) p += "index.html";
   if(BLOCKED.test(p) || p.includes("\0")){ res.writeHead(404); return res.end("Not found"); }
   const file = path.normalize(path.join(ROOT,p));
   if(!file.startsWith(ROOT+path.sep)){ res.writeHead(404); return res.end("Not found"); }
-  fs.readFile(file,(err,buf)=>{
-    if(err){ res.writeHead(404); return res.end("Not found"); }
-    const ext = path.extname(file).toLowerCase();
-    res.writeHead(200,{"Content-Type":MIME[ext]||"application/octet-stream","Cache-Control":/\.(html|js|webmanifest)$/.test(ext)?"no-cache":"public, max-age=86400","X-Content-Type-Options":"nosniff"});
-    res.end(buf);
+  fs.stat(file,(e0,st)=>{
+    if(e0 || !st.isFile()){ res.writeHead(404); return res.end("Not found"); }
+    const ext = path.extname(file).toLowerCase(), gzOk = /\.(html|js|css|json|svg|webmanifest)$/.test(ext) && /\bgzip\b/.test(req.headers["accept-encoding"]||"");
+    const hit = STATIC_CACHE.get(file);
+    const finish = (buf,gz)=>{
+      res.writeHead(200,{"Content-Type":MIME[ext]||"application/octet-stream","Cache-Control":/\.(html|js|webmanifest)$/.test(ext)?"no-cache":"public, max-age=86400","X-Content-Type-Options":"nosniff","Vary":"Accept-Encoding",...(gz?{"Content-Encoding":"gzip"}:{})});
+      res.end(buf);
+    };
+    if(hit && hit.m===st.mtimeMs) return finish(gzOk?hit.gz:hit.raw, gzOk);
+    fs.readFile(file,(err,buf)=>{
+      if(err){ res.writeHead(404); return res.end("Not found"); }
+      const gz = buf.length>1024 && /\.(html|js|css|json|svg|webmanifest)$/.test(ext) ? zlib.gzipSync(buf,{level:9}) : buf;
+      if(buf.length<=8e6) STATIC_CACHE.set(file,{m:st.mtimeMs,raw:buf,gz});
+      finish(gzOk?gz:buf, gzOk);
+    });
   });
 }
 
@@ -285,6 +303,12 @@ http.createServer(async (req,res)=>{
     serveStatic(req,res);
   }catch(e){ console.error(e); if(!res.headersSent) send(res,500,{error:"خطای سرور"}); else res.end(); }
 }).listen(PORT,HOST,()=>{
+  // پیش‌گرم‌کردن کش فشرده‌ی فایل‌های ایستا تا اولین کاربران منتظر فشرده‌سازی نمانند
+  try{ const warm = d=>fs.readdirSync(d,{withFileTypes:true}).forEach(e=>{ const f=path.join(d,e.name);
+      if(e.isDirectory()){ if(/^(vendor)$/.test(e.name)) warm(f); return; }
+      if(!/\.(html|js|css|json|svg|webmanifest)$/i.test(e.name) || BLOCKED.test("/"+path.relative(ROOT,f).split(path.sep).join("/"))) return;
+      const st=fs.statSync(f), buf=fs.readFileSync(f); if(buf.length>1024 && buf.length<=8e6) STATIC_CACHE.set(f,{m:st.mtimeMs,raw:buf,gz:zlib.gzipSync(buf,{level:9})}); });
+    warm(ROOT); }catch(e){}
   console.log("http://"+HOST+":"+PORT);
   setImmediate(initPublic);
   console.log(ADMIN_ON ? "پنل مدیر: /admin.html" : "هشدار: ADMIN_PASSWORD (حداقل ۸ کاراکتر) تنظیم نشده؛ پنل مدیر غیرفعال است.");

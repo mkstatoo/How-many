@@ -83,6 +83,29 @@ body{overflow:hidden}
 .empty{padding:16px;font-size:14px;line-height:1.9;color:var(--ink-2)}
 .empty b{color:var(--ink)}
 .hidden{display:none!important}
+/* تخمین قیمت ملک (ماژول قیمت‌گذاری) */
+#result{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.sheet-head{overflow:auto;flex:0 1 auto;min-height:0}
+.est{margin-top:12px;border-top:1px solid var(--glass-line);padding-top:10px}
+.est-toggle{width:100%;border:1px solid rgba(255,255,255,.16);background:linear-gradient(160deg,rgba(255,255,255,.16),rgba(255,255,255,.04));box-shadow:inset 0 1px 0 rgba(255,255,255,.35);color:var(--ink);font:inherit;font-size:14px;font-weight:700;padding:10px 12px;border-radius:14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+.est-toggle:focus-visible,.ef input:focus-visible,.ef select:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.est-toggle::after{content:"▾";color:var(--teal)}
+.est-toggle[aria-expanded=true]::after{content:"▴"}
+.est-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.ef span{display:block;font-size:12px;color:var(--ink-3);margin-bottom:4px}
+.ef input,.ef select{width:100%;height:42px;padding:0 10px;font:inherit;font-size:15px;color:var(--ink);border-radius:12px;border:1px solid rgba(255,255,255,.18);background:linear-gradient(180deg,rgba(0,0,0,.28),rgba(0,0,0,.12))}
+.ef select option{color:#111}
+.est-checks{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.est-out{margin-top:12px}
+.est-price{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.est-price b{font-size:30px;font-weight:800;color:var(--teal);line-height:1.2}
+.est-price span{font-size:13px;color:var(--ink-2)}
+.est-total{font-size:14px;margin-top:4px;color:var(--ink)}
+.est-total small{color:var(--ink-3);font-size:12px}
+.est-bd{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.est-bd i{font-style:normal;font-size:11.5px;padding:3px 9px;border-radius:999px;border:1px solid var(--glass-line);color:var(--ink-2);background:rgba(255,255,255,.05)}
+.est-bd i.neg{color:#f5b3aa}.est-bd i.pos{color:#8fe0d3}
+@media (max-width:819px){.sheet.est-open{max-height:86vh}}
 
 /* desktop: side panel */
 @media (min-width:820px){
@@ -153,6 +176,22 @@ body{overflow:hidden}
       <div class="range" id="range"></div>
       <div class="facts" id="facts"></div>
       <div id="notes"></div>
+      <div class="est hidden" id="est">
+        <button class="est-toggle" id="estToggle" type="button" aria-expanded="false" aria-controls="estBody">تخمین قیمت ملک شما</button>
+        <div class="hidden" id="estBody">
+          <div class="est-grid">
+            <label class="ef"><span>متراژ (متر)</span><input id="eArea" inputmode="numeric" dir="ltr" autocomplete="off" placeholder="۱۰۰"></label>
+            <label class="ef"><span>سال ساخت</span><input id="eYear" inputmode="numeric" dir="ltr" autocomplete="off"></label>
+            <label class="ef"><span>تعداد خواب</span><select id="eRooms"><option value="1">۱ یا کمتر</option><option value="2" selected>۲</option><option value="3">۳</option><option value="4">۴ یا بیشتر</option></select></label>
+          </div>
+          <div class="est-checks" role="group" aria-label="امکانات">
+            <button class="chip" type="button" id="eElev" aria-pressed="true">آسانسور</button>
+            <button class="chip" type="button" id="ePark" aria-pressed="true">پارکینگ</button>
+            <button class="chip" type="button" id="eCorner" aria-pressed="false">نبش</button>
+          </div>
+          <div class="est-out" id="estOut" aria-live="polite"></div>
+        </div>
+      </div>
     </div>
     <button class="sheet-toggle" id="toggle" aria-expanded="false"></button>
     <div class="list" id="list"></div>
@@ -182,21 +221,24 @@ body{overflow:hidden}
 <div class="toast glass hidden" id="toast"></div>
 
 <script src="vendor/leaflet.js"></script>
-<script src="vendor/xlsx.full.min.js"></script>
 <script src="listings-core.js"></script>
+<script src="pricing.js"></script>
 <script src="config.js"></script>
 <script>
 (function(){
 "use strict";
 const C = window.APP_CONFIG;
 const $ = id => document.getElementById(id);
-const fa = (n, d=0) => Number(n).toLocaleString("fa-IR",{maximumFractionDigits:d,minimumFractionDigits:d});
+const _nf = {};
+const fa = (n, d=0) => (_nf[d] || (_nf[d] = new Intl.NumberFormat("fa-IR",{maximumFractionDigits:d,minimumFractionDigits:d}))).format(Number(n));   // نمونه‌ی فرمت‌کننده کش می‌شود
 const mil = v => fa(v/1e6, 1);
 
 /* ---------- parsing (منطق مشترک در listings-core.js) ---------- */
 const { clean } = window.ListingsCore;
 const buildListings = rows => window.ListingsCore.buildListings(rows, C);
-const readWorkbook = (buf, name) => window.ListingsCore.readRows(buf, name, XLSX);
+let xlsxP = null;
+const loadXlsx = () => window.XLSX ? Promise.resolve() : (xlsxP = xlsxP || new Promise((ok,no)=>{ const s=document.createElement("script"); s.src="vendor/xlsx.full.min.js"; s.onload=ok; s.onerror=()=>{ xlsxP=null; no(new Error("xlsx")); }; document.head.appendChild(s); }));
+const readWorkbook = async (buf, name) => { await loadXlsx(); return window.ListingsCore.readRows(buf, name, window.XLSX); };
 
 /* ---------- state ---------- */
 let listings = [], stats = null;
@@ -279,6 +321,7 @@ function renderChips(){
 function renderResult(){
   if(!point){ $("hint").classList.remove("hidden"); $("result").classList.add("hidden"); return; }
   $("hint").classList.add("hidden"); $("result").classList.remove("hidden");
+  renderEst();
   const a = analyse(point.lat, point.lng);
   const yTxt = yearsTxt();
   $("streetName").textContent = streetName || (useMapir ? "نام معبر در دسترس نیست" : "نام معبر با کلید map.ir نمایش داده می‌شود");
@@ -321,6 +364,51 @@ function renderResult(){
   }).join("");
 }
 
+/* ---------- تخمین قیمت ملک (pricing.js + pricing-model.json) ---------- */
+let pm = null, pool = null, prepared = null, baseCache = null, estRaf = 0;
+const renderEstSoon = ()=>{ if(estRaf) return; estRaf = requestAnimationFrame(()=>{ estRaf=0; renderEst(); }); };
+const toLat = x => String(x).replace(/[۰-۹]/g,c=>"۰۱۲۳۴۵۶۷۸۹".indexOf(c)).replace(/[٠-٩]/g,c=>"٠١٢٣٤٥٦٧٨٩".indexOf(c));
+function buildPool(){
+  prepared = pool = baseCache = null;
+  if(!pm || !listings.length || !window.PropertyPricing) return;
+  const Y = pm.calibration.current_persian_year, rg = pm.valid_input_range.price_per_m2_pool;
+  pool = listings.filter(l=>l.apt && l.per>=rg[0]*(1-1e-6) && l.per<=rg[1]*(1+1e-6)).map(l=>({lat:l.lat,lng:l.lng,pricePerM2:l.per,area:l.area,age:Math.max(0,Y-l.year),
+    rooms:l.rooms,elevator:l.elev,parking:l.park,corner:l.corner,urgent:l.urgent,barter:l.barter}));
+  if(pool.length<200){ pool=null; return; }                       // نمونه‌ی آپارتمانی کافی نیست
+  prepared = window.PropertyPricing.prepare(pm, pool);
+}
+const EST_LABEL = {rooms_le1:"یک‌خواب یا کمتر", rooms_2:"دوخواب", rooms_3:"سه‌خواب", rooms_4plus:"چهارخواب و بیشتر", no_elevator:"بدون آسانسور", no_parking:"بدون پارکینگ", corner:"نبش"};
+const estLabel = k => EST_LABEL[k] || (k.startsWith("area_") ? "متراژ "+fa0(k.slice(5)) : k.startsWith("age_") ? "سن "+fa0(k.slice(4))+" سال" : k);
+const fa0 = t => String(t).replace(/\d/g,d=>"۰۱۲۳۴۵۶۷۸۹"[d]).replace("<=","≤").replace("+","+");
+function renderEst(){
+  const box = $("est");
+  if(!prepared){ box.classList.add("hidden"); return; }
+  box.classList.remove("hidden");
+  if(!$("eYear").value) $("eYear").value = fy(C.defaultYear);
+  const out = $("estOut"), body = $("estBody");
+  if(body.classList.contains("hidden")){ out.innerHTML=""; return; }
+  const area = Number(toLat($("eArea").value)), year = Number(toLat($("eYear").value)), rg = pm.valid_input_range.area_m2;
+  if(!$("eArea").value){ out.innerHTML = '<div class="note">متراژ و مشخصات ملک را وارد کنید.</div>'; return; }
+  if(!(area>=rg[0] && area<=rg[1])){ out.innerHTML = '<div class="note bad">متراژ باید بین '+fa(rg[0])+' تا '+fa(rg[1])+' متر باشد (مدل فقط آپارتمان را پوشش می‌دهد).</div>'; return; }
+  if(!(year>=1340 && year<=1450)){ out.innerHTML = '<div class="note bad">سال ساخت معتبر نیست.</div>'; return; }
+  const input = {lat:point.lat, lng:point.lng, area, age:Math.max(0, pm.calibration.current_persian_year-year), rooms:Number($("eRooms").value),
+    elevator:$("eElev").getAttribute("aria-pressed")==="true"?1:0, parking:$("ePark").getAttribute("aria-pressed")==="true"?1:0, corner:$("eCorner").getAttribute("aria-pressed")==="true"?1:0};
+  const key = point.lat+","+point.lng;
+  if(!baseCache || baseCache.key!==key || baseCache.p!==prepared) baseCache = {key, p:prepared, s:window.PropertyPricing.smoothAt(pm, prepared, point.lat, point.lng)};   // همسایه‌ها به فرم وابسته نیستند
+  const r = window.PropertyPricing.estimate(pm, pool, input, {prepared, smoothed:baseCache.s});
+  if(r.error){ out.innerHTML = '<div class="note bad">در اطراف این نقطه آپارتمان کافی برای تخمین نیست.</div>'; return; }
+  const bil = v => fa(v/1e9, 2), bd = r.breakdown.map(b=>'<i class="'+(b.pct<0?"neg":"pos")+'">'+estLabel(b.key)+' '+(b.pct>0?"+":"−")+fa(Math.abs(b.pct),1)+'٪</i>').join("");
+  out.innerHTML = '<div class="est-price"><b>'+mil(r.pricePerM2)+'</b><span>میلیون تومان برای هر متر مربع</span></div>'+
+    '<div class="est-total">قیمت کل حدود <b>'+bil(r.totalPrice)+'</b> میلیارد تومان <small>(بازه محتمل ۸۰٪: '+bil(r.totalLow)+' تا '+bil(r.totalHigh)+')</small></div>'+
+    '<div class="est-bd">'+bd+'</div>'+
+    (r.warnings.length ? '<div class="note bad">'+r.warnings.map(w=>/few listings/.test(w)?"آگهی‌های اطراف این نقطه کم است؛ دقت تخمین پایین است.":/outside/.test(w)?"متراژ خارج از محدوده‌ی مدل است.":esc(w)).join(" ")+'</div>' : '')+
+    '<div class="note">برآورد بر پایه قیمت پیشنهادی آگهی‌هاست، نه قیمت معامله. میانه‌ی خطای مدل حدود ۱۱٪ است.</div>';
+}
+$("estToggle").onclick = ()=>{ const o = $("estBody").classList.toggle("hidden"); $("estToggle").setAttribute("aria-expanded", String(!o)); $("sheet").classList.toggle("est-open", !o); renderEst(); };
+["eArea","eYear"].forEach(id=>$(id).addEventListener("input",renderEstSoon)); $("eRooms").addEventListener("change",renderEstSoon);
+["eElev","ePark","eCorner"].forEach(id=>$(id).addEventListener("click",()=>{ const b=$(id); b.setAttribute("aria-pressed", String(b.getAttribute("aria-pressed")!=="true")); renderEstSoon(); }));
+fetch("pricing-model.json",{cache:"no-cache"}).then(r=>r.ok?r.json():null).then(j=>{ if(j && j.version===1){ pm=j; buildPool(); if(point) renderResult(); } }).catch(()=>{});
+
 function refresh(){ renderChips(); renderResult(); }
 
 /* ---------- reverse geocoding (map.ir) ---------- */
@@ -359,7 +447,8 @@ $("locate").onclick=()=>{
 /* ---------- load data ---------- */
 function ingestPublic(j){   // نسخه‌ی پاک‌شده‌ی سرور: بدون عنوان و لینک
   if(!j || !Array.isArray(j.list)) throw new Error("قالب داده نامعتبر است");
-  const list = j.list.map(x=>({area:x.a, year:x.y, per:x.p, lat:x.la, lng:x.lo, street:x.s||"", total:x.a*x.p}));
+  const list = j.list.map(x=>{ const o={area:x.a, year:x.y, per:x.p, lat:x.la, lng:x.lo, street:x.s||"", total:x.a*x.p};
+    if(x.t){ o.apt=1; o.rooms=x.r; o.elev=x.e; o.park=x.k; o.corner=x.c||0; o.urgent=x.u||0; o.barter=x.b||0; } return o; });
   applyData({list, stats:j.stats});
 }
 function ingest(rows, label){ applyData(buildListings(rows)); }
@@ -368,7 +457,7 @@ function applyData(res){
   const s=stats, skipped=s.rows-s.ok-s.dup;
   $("dataInfo").textContent = fa(s.ok)+" آگهی قابل استفاده از "+fa(s.rows)+" ردیف"+(skipped?" — "+fa(skipped)+" ردیف کنار گذاشته شد":"");
   $("dataInfo").title = "بدون مختصات: "+s.noGeo+" | بدون سال/متراژ (زمین و…): "+s.noYear+" | بدون قیمت: "+s.noPrice+" | قیمت ناسازگار: "+s.mismatch+" | خارج از مشهد: "+s.outside+" | تکراری: "+s.dup;
-  $("loader").classList.add("hidden"); refresh();
+  $("loader").classList.add("hidden"); buildPool(); refresh();
 }
 /* ذخیره‌ی فایل انتخاب‌شده در همین مرورگر (برای وقتی صفحه مستقیم از فایل باز می‌شود و fetch مجاز نیست) */
 function idb(){ return new Promise((res,rej)=>{ const q=indexedDB.open("arzesh-app",1); q.onupgradeneeded=()=>q.result.createObjectStore("f"); q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error); }); }
