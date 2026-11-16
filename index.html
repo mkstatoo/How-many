@@ -114,8 +114,9 @@ body{overflow:hidden}
   box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 8px 20px rgba(0,0,0,.4)}
 .fab svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
 .fab:active{transform:scale(.94)}
+.fab.fab-off{opacity:0;pointer-events:none;transform:scale(.8)}
 .fab:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
-@media (prefers-reduced-motion:no-preference){.fab{transition:bottom .25s ease}}
+@media (prefers-reduced-motion:no-preference){.fab{transition:bottom .25s ease,opacity .2s ease,transform .2s ease}}
 /* بالای صفحه: عنوان + کلید فروش/اجاره */
 .seg{flex:none;display:flex;padding:3px;border-radius:13px;background:rgba(0,0,0,.26);border:1px solid rgba(255,255,255,.12)}
 .seg button{border:0;background:none;color:var(--ink-2);font:inherit;font-size:13px;font-weight:700;padding:6px 14px;border-radius:10px;cursor:pointer}
@@ -454,7 +455,15 @@ function track(lat,lng){
 /* برگه‌ی نتیجه: پنهان‌شدن هنگام حرکت نقشه، نمایش با انتخاب نقطه، دکمه‌ی برگشت (و دکمه‌ی برگشت گوشی) */
 let histPushed = false;
 const sheetEl = $("sheet"), fabEl = $("locate");
-const setSheetH = () => document.documentElement.style.setProperty("--sheet-h", sheetEl.classList.contains("away") ? "0px" : sheetEl.offsetHeight+"px");
+const topEl = document.querySelector(".top");
+const setSheetH = () => {
+  const away = sheetEl.classList.contains("away"), sh = away ? 0 : sheetEl.offsetHeight;
+  document.documentElement.style.setProperty("--sheet-h", sh+"px");
+  // اگر برگه آن‌قدر بلند شد که دکمه به نوار بالا می‌رسد (فرم تخمین یا فهرست باز است)، دکمه موقتاً پنهان می‌شود
+  const free = window.innerHeight - topEl.getBoundingClientRect().bottom - sh - 90;
+  fabEl.classList.toggle("fab-off", free < 0 && window.innerWidth < 820);
+};
+window.addEventListener("resize", setSheetH);
 if(window.ResizeObserver) new ResizeObserver(setSheetH).observe(sheetEl);
 const hideSheet = () => { if(!sheetEl.classList.contains("away")){ sheetEl.classList.add("away"); setSheetH(); } };
 const showSheet = () => { if(sheetEl.classList.contains("away")){ sheetEl.classList.remove("away"); setSheetH(); } };
