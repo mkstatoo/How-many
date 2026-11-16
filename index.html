@@ -10,6 +10,8 @@
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="injachande">
+<meta name="application-name" content="injachande">
 <link rel="stylesheet" href="vendor/leaflet.css">
 <style>
 @font-face{font-family:"Vazirmatn";src:url("vendor/fonts/Vazirmatn.woff2") format("woff2");font-weight:100 900;font-display:swap}
@@ -106,7 +108,8 @@ body{overflow:hidden}
 .est-bd{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .est-bd i{font-style:normal;font-size:11.5px;padding:3px 9px;border-radius:999px;border:1px solid var(--glass-line);color:var(--ink-2);background:rgba(255,255,255,.05)}
 .est-bd i.neg{color:#f5b3aa}.est-bd i.pos{color:#8fe0d3}
-@media (max-width:819px){.sheet.est-open{max-height:86vh}}
+@media (max-width:819px){.sheet,.sheet.est-open{max-height:calc(100vh - var(--top-b,140px) - 22px)}.sheet:not(.est-open){max-height:min(62vh,calc(100vh - var(--top-b,140px) - 22px))}}
+@supports (height:100dvh){@media (max-width:819px){.sheet,.sheet.est-open{max-height:calc(100dvh - var(--top-b,140px) - 22px)}.sheet:not(.est-open){max-height:min(62dvh,calc(100dvh - var(--top-b,140px) - 22px))}}}
 /* برگه هنگام حرکت نقشه پنهان می‌شود و با انتخاب نقطه بالا می‌آید */
 .sheet.away{transform:translateY(calc(100% + 40px));pointer-events:none;visibility:hidden;transition:transform .25s ease,visibility 0s linear .25s}
 /* دکمه موقعیت من: گوشه‌ی پایین-راست، بالای برگه (مثل گوگل‌مپ) */
@@ -463,6 +466,7 @@ const topEl = document.querySelector(".top");
 const setSheetH = () => {
   const away = sheetEl.classList.contains("away"), sh = away ? 0 : sheetEl.offsetHeight;
   document.documentElement.style.setProperty("--sheet-h", sh+"px");
+  document.documentElement.style.setProperty("--top-b", Math.ceil(topEl.getBoundingClientRect().bottom)+"px");
   // اگر برگه آن‌قدر بلند شد که دکمه به نوار بالا می‌رسد (فرم تخمین یا فهرست باز است)، دکمه موقتاً پنهان می‌شود
   const free = window.innerHeight - topEl.getBoundingClientRect().bottom - sh - 90;
   fabEl.classList.toggle("fab-off", free < 0 && window.innerWidth < 820);
