@@ -281,12 +281,12 @@ function serveStatic(req,res){
       res.writeHead(200,{"Content-Type":MIME[ext]||"application/octet-stream","Cache-Control":/\.(html|js|webmanifest)$/.test(ext)?"no-cache":"public, max-age=86400","X-Content-Type-Options":"nosniff","Vary":"Accept-Encoding",...(gz?{"Content-Encoding":"gzip"}:{})});
       res.end(buf);
     };
-    if(hit && hit.m===st.mtimeMs) return finish(gzOk?hit.gz:hit.raw, gzOk);
+    if(hit && hit.m===st.mtimeMs){ const useGz = gzOk && hit.gz!==hit.raw; return finish(useGz?hit.gz:hit.raw, useGz); }
     fs.readFile(file,(err,buf)=>{
       if(err){ res.writeHead(404); return res.end("Not found"); }
       const gz = buf.length>1024 && /\.(html|js|css|json|svg|webmanifest)$/.test(ext) ? zlib.gzipSync(buf,{level:9}) : buf;
       if(buf.length<=8e6) STATIC_CACHE.set(file,{m:st.mtimeMs,raw:buf,gz});
-      finish(gzOk?gz:buf, gzOk);
+      const useGz = gzOk && gz!==buf; finish(useGz?gz:buf, useGz);   // فایل کوچک فشرده نمی‌شود؛ هدر gzip فقط وقتی که بدنه واقعاً فشرده است
     });
   });
 }

@@ -10,11 +10,13 @@
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="injachande">
+<meta name="application-name" content="injachande">
 <link rel="stylesheet" href="vendor/leaflet.css">
 <style>
 @font-face{font-family:"Vazirmatn";src:url("vendor/fonts/Vazirmatn.woff2") format("woff2");font-weight:100 900;font-display:swap}
 :root{
-  --bg:#0a1a21; --ink:#e9f1f2; --ink-2:#9fb4ba; --ink-3:#6b848c;
+  --bg:#0a1a21; --ink:#f1f6f7; --ink-2:#d6e2e5; --ink-3:#c1d1d6;
   --glass:rgba(12,30,38,.78); --glass-line:rgba(160,205,215,.16);
   --gold:#e6b85c; --teal:#3cc0ae; --blue:#5b8def; --bad:#ef7b6c;
   --r:16px;
@@ -32,7 +34,7 @@ body{overflow:hidden}
 .top{position:fixed;z-index:500;inset:max(10px,env(safe-area-inset-top)) 10px auto 10px;display:flex;flex-direction:column;gap:8px;pointer-events:none}
 /* شیشه‌ی مایع: تیره‌ی کم‌رنگ برای خوانایی + برق لبه + بازتاب نور */
 .glass{position:relative;isolation:isolate;border-radius:var(--r);
-  background:linear-gradient(135deg,rgba(255,255,255,.17),rgba(255,255,255,.035) 42%,rgba(255,255,255,.1)),rgba(9,24,31,.52);
+  background:linear-gradient(135deg,rgba(255,255,255,.17),rgba(255,255,255,.035) 42%,rgba(255,255,255,.1)),rgba(9,24,31,.8);
   backdrop-filter:blur(22px) saturate(180%) brightness(1.06);-webkit-backdrop-filter:blur(22px) saturate(180%) brightness(1.06);
   border:1px solid rgba(255,255,255,.16);
   box-shadow:inset 0 1.5px 0 rgba(255,255,255,.5),inset 0 -1px 0 rgba(255,255,255,.1),inset 1.5px 0 0 rgba(255,255,255,.14),inset -1.5px 0 0 rgba(255,255,255,.14),0 14px 34px rgba(0,0,0,.38)}
@@ -71,7 +73,7 @@ body{overflow:hidden}
 .fact span{font-size:11.5px;color:var(--ink-3)}
 .note{margin-top:10px;font-size:12.5px;line-height:1.7;padding:8px 10px;border-radius:12px;background:rgba(230,184,92,.1);color:#f0d6a0}
 .note.bad{background:rgba(239,123,108,.12);color:#f5b3aa}
-.sheet-toggle{margin:0 16px 10px;border:0;background:none;color:var(--teal);font:inherit;font-size:13px;text-align:start;cursor:pointer;padding:4px 0}
+.sheet-toggle{margin:0 16px 10px;border:0;background:none;color:#6fe0cf;font:inherit;font-size:13px;text-align:start;cursor:pointer;padding:4px 0}
 .list{overflow:auto;border-top:1px solid var(--glass-line);padding:4px 16px 10px;display:none}
 .sheet.open .list{display:block}
 .row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:2px 10px;padding:9px 0;border-bottom:1px solid var(--glass-line);font-size:13px}
@@ -95,6 +97,7 @@ body{overflow:hidden}
 .ef span{display:block;font-size:12px;color:var(--ink-3);margin-bottom:4px}
 .ef input,.ef select{width:100%;height:42px;padding:0 10px;font:inherit;font-size:15px;color:var(--ink);border-radius:12px;border:1px solid rgba(255,255,255,.18);background:linear-gradient(180deg,rgba(0,0,0,.28),rgba(0,0,0,.12))}
 .ef select option{color:#111}
+.ef input::placeholder{color:var(--ink-3);opacity:1}
 .est-checks{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
 .est-out{margin-top:12px}
 .est-price{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
@@ -105,7 +108,30 @@ body{overflow:hidden}
 .est-bd{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .est-bd i{font-style:normal;font-size:11.5px;padding:3px 9px;border-radius:999px;border:1px solid var(--glass-line);color:var(--ink-2);background:rgba(255,255,255,.05)}
 .est-bd i.neg{color:#f5b3aa}.est-bd i.pos{color:#8fe0d3}
-@media (max-width:819px){.sheet.est-open{max-height:86vh}}
+@media (max-width:819px){.sheet,.sheet.est-open{max-height:calc(100vh - var(--top-b,140px) - 22px)}.sheet:not(.est-open){max-height:min(62vh,calc(100vh - var(--top-b,140px) - 22px))}}
+@supports (height:100dvh){@media (max-width:819px){.sheet,.sheet.est-open{max-height:calc(100dvh - var(--top-b,140px) - 22px)}.sheet:not(.est-open){max-height:min(62dvh,calc(100dvh - var(--top-b,140px) - 22px))}}}
+/* برگه هنگام حرکت نقشه پنهان می‌شود و با انتخاب نقطه بالا می‌آید */
+.sheet.away{transform:translateY(calc(100% + 40px));pointer-events:none;visibility:hidden;transition:transform .25s ease,visibility 0s linear .25s}
+/* دکمه موقعیت من: گوشه‌ی پایین-راست، بالای برگه (مثل گوگل‌مپ) */
+.fab{position:fixed;z-index:520;right:14px;bottom:calc(var(--sheet-h,0px) + max(10px,env(safe-area-inset-bottom)) + 14px);width:48px;height:48px;border-radius:50%;border:1px solid rgba(255,255,255,.2);
+  background:linear-gradient(160deg,rgba(255,255,255,.22),rgba(255,255,255,.06)),rgba(9,24,31,.62);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);color:var(--ink);display:grid;place-items:center;cursor:pointer;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 8px 20px rgba(0,0,0,.4)}
+.fab svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.fab:active{transform:scale(.94)}
+.fab.fab-off{opacity:0;pointer-events:none;transform:scale(.8)}
+.fab:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+@media (prefers-reduced-motion:no-preference){.fab{transition:bottom .25s ease,opacity .2s ease,transform .2s ease}}
+/* بالای صفحه: عنوان + کلید فروش/اجاره */
+.seg{flex:none;display:flex;padding:3px;border-radius:13px;background:rgba(0,0,0,.26);border:1px solid rgba(255,255,255,.12)}
+.seg button{border:0;background:none;color:var(--ink-2);font:inherit;font-size:13px;font-weight:700;padding:6px 14px;border-radius:10px;cursor:pointer}
+.seg button[aria-pressed=true]{background:linear-gradient(160deg,#f3cf86,var(--gold));color:#241a05;box-shadow:inset 0 1px 0 rgba(255,255,255,.6)}
+.seg button[aria-disabled=true]:not([aria-pressed=true]){opacity:.85}
+.seg button:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+.grab{width:44px;height:5px;border-radius:5px;background:rgba(255,255,255,.4);margin:8px auto 0;flex:none}
+.sheet.dragging{transition:none!important}
+.back{width:32px;height:32px;border-radius:11px;flex:none}
+.back svg{width:18px;height:18px}
+@media (min-width:820px){.fab{right:auto;left:14px;bottom:14px}}
 
 /* desktop: side panel */
 @media (min-width:820px){
@@ -161,17 +187,20 @@ body{overflow:hidden}
   <div class="bar glass">
     <span class="me hidden" id="me" aria-hidden="true"></span>
     <h1>قیمت هر متر مربع<small id="dataInfo">در حال خواندن داده…</small></h1>
+    <div class="seg" role="group" aria-label="نوع قیمت"><button type="button" id="modeSale" aria-pressed="true">فروش</button><button type="button" id="modeRent" aria-pressed="false" aria-disabled="true">اجاره</button></div>
     <button class="iconbtn hidden" id="install" aria-label="نصب اپ"><svg viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19h14"/></svg></button>
-    <button class="iconbtn" id="locate" aria-label="موقعیت من"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
   </div>
   <div class="chips glass" id="chips" role="group" aria-label="سال ساخت"></div>
 </div>
 
+<button class="fab" id="locate" type="button" aria-label="موقعیت من"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg></button>
+
 <section class="sheet glass" id="sheet" aria-live="polite">
   <div class="empty" id="hint"><b>یک نقطه روی نقشه انتخاب کنید</b><br>میانگین قیمت هر متر مربع نمونه‌های اطراف آن نقطه، برای سال ساخت انتخاب‌شده نشان داده می‌شود.</div>
   <div id="result" class="hidden">
+    <div class="grab" aria-hidden="true"></div>
     <div class="sheet-head">
-      <div class="street"><svg viewBox="0 0 24 24"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.5"/></svg><span id="streetName">—</span></div>
+      <div class="street"><button class="iconbtn back" id="back" type="button" aria-label="بازگشت"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button><svg viewBox="0 0 24 24"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.5"/></svg><span id="streetName">—</span></div>
       <div class="price"><b id="avg">—</b><span>میلیون تومان برای هر متر مربع</span></div>
       <div class="range" id="range"></div>
       <div class="facts" id="facts"></div>
@@ -430,7 +459,58 @@ function track(lat,lng){
   fetch(C.pickUrl,{method:"POST",keepalive:true,headers:{"Content-Type":"application/json","x-user-token":u.token},
     body:JSON.stringify({lat:+lat.toFixed(4),lng:+lng.toFixed(4),found:a.sel.length,min:C.minListings})}).catch(()=>{});
 }
+/* برگه‌ی نتیجه: پنهان‌شدن هنگام حرکت نقشه، نمایش با انتخاب نقطه، دکمه‌ی برگشت (و دکمه‌ی برگشت گوشی) */
+let histPushed = false;
+const sheetEl = $("sheet"), fabEl = $("locate");
+const topEl = document.querySelector(".top");
+const setSheetH = () => {
+  const away = sheetEl.classList.contains("away"), sh = away ? 0 : sheetEl.offsetHeight;
+  document.documentElement.style.setProperty("--sheet-h", sh+"px");
+  document.documentElement.style.setProperty("--top-b", Math.ceil(topEl.getBoundingClientRect().bottom)+"px");
+  // اگر برگه آن‌قدر بلند شد که دکمه به نوار بالا می‌رسد (فرم تخمین یا فهرست باز است)، دکمه موقتاً پنهان می‌شود
+  const free = window.innerHeight - topEl.getBoundingClientRect().bottom - sh - 90;
+  fabEl.classList.toggle("fab-off", free < 0 && window.innerWidth < 820);
+};
+window.addEventListener("resize", setSheetH);
+if(window.ResizeObserver) new ResizeObserver(setSheetH).observe(sheetEl);
+const hideSheet = () => { if(!sheetEl.classList.contains("away")){ sheetEl.classList.add("away"); setSheetH(); } };
+const showSheet = () => { if(sheetEl.classList.contains("away")){ sheetEl.classList.remove("away"); setSheetH(); } };
+map.on("dragstart zoomstart", hideSheet);
+function clearPoint(){ point=null; streetName=""; revToken++; selLayer.clearLayers(); showSheet(); renderResult(); }
+$("back").onclick = () => { if(histPushed) history.back(); else clearPoint(); };
+window.addEventListener("popstate", () => { histPushed=false; if(point) clearPoint(); });
+/* کشیدن برگه به پایین با انگشت = دکمه‌ی برگشت */
+(function(){
+  let y0=0, t0=0, dy=0, on=false, tracking=false;
+  const scrolled = el => { for(; el && el!==sheetEl; el=el.parentElement){ if(el.scrollHeight>el.clientHeight+1 && /(auto|scroll)/.test(getComputedStyle(el).overflowY) && el.scrollTop>0) return true; } return false; };
+  sheetEl.addEventListener("touchstart",e=>{
+    tracking = !!point && e.touches.length===1 && !/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName) && !scrolled(e.target);
+    on=false; dy=0; y0=e.touches[0].clientY; t0=e.timeStamp;
+  },{passive:true});
+  sheetEl.addEventListener("touchmove",e=>{
+    if(!tracking) return;
+    const d=e.touches[0].clientY-y0;
+    if(!on){ if(d>8 && !scrolled(e.target)){ on=true; sheetEl.classList.add("dragging"); } else if(d<-8){ tracking=false; return; } else return; }
+    dy=Math.max(0,d); sheetEl.style.transform="translateY("+dy+"px)"; e.preventDefault();
+  },{passive:false});
+  const end=e=>{
+    if(!on){ tracking=false; return; }
+    const v=dy/Math.max(1,e.timeStamp-t0), far=dy>Math.min(110,sheetEl.offsetHeight*.3) || v>0.6;
+    on=false; tracking=false; sheetEl.classList.remove("dragging");
+    if(far){
+      sheetEl.style.transition="transform .18s ease-out"; sheetEl.style.transform="translateY(calc(100% + 40px))";
+      setTimeout(()=>{ sheetEl.style.transition="none"; $("back").onclick();
+        requestAnimationFrame(()=>requestAnimationFrame(()=>{ sheetEl.style.transition=""; sheetEl.style.transform=""; setSheetH(); })); },190);
+    } else { sheetEl.style.transform=""; }
+  };
+  sheetEl.addEventListener("touchend",end); sheetEl.addEventListener("touchcancel",end);
+})();
+/* کلید فروش/اجاره: اجاره تا بارگذاری داده‌ی آگهی‌های اجاره (C.rent.enabled) غیرفعال است */
+let priceMode = "sale";
+$("modeSale").onclick = () => { priceMode="sale"; $("modeSale").setAttribute("aria-pressed","true"); $("modeRent").setAttribute("aria-pressed","false"); };
+$("modeRent").onclick = () => { if(!(C.rent && C.rent.enabled)) return toast("قیمت اجاره هنوز فعال نشده است؛ داده‌ی آگهی‌های اجاره (ودیعه و اجاره) بارگذاری نشده."); };
 async function pick(lat,lng){
+  showSheet(); if(!histPushed){ try{ history.pushState({arz:1},""); histPushed=true; }catch(_){} }
   point={lat,lng}; renderResult(); track(lat,lng);
   await reverse(lat,lng);
   if(point && point.lat===lat && point.lng===lng) renderResult();
