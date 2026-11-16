@@ -124,6 +124,8 @@ body{overflow:hidden}
 .seg button[aria-pressed=true]{background:linear-gradient(160deg,#f3cf86,var(--gold));color:#241a05;box-shadow:inset 0 1px 0 rgba(255,255,255,.6)}
 .seg button[aria-disabled=true]:not([aria-pressed=true]){opacity:.85}
 .seg button:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+.grab{width:44px;height:5px;border-radius:5px;background:rgba(255,255,255,.4);margin:8px auto 0;flex:none}
+.sheet.dragging{transition:none!important}
 .back{width:32px;height:32px;border-radius:11px;flex:none}
 .back svg{width:18px;height:18px}
 @media (min-width:820px){.fab{right:auto;left:14px;bottom:14px}}
@@ -193,6 +195,7 @@ body{overflow:hidden}
 <section class="sheet glass" id="sheet" aria-live="polite">
   <div class="empty" id="hint"><b>یک نقطه روی نقشه انتخاب کنید</b><br>میانگین قیمت هر متر مربع نمونه‌های اطراف آن نقطه، برای سال ساخت انتخاب‌شده نشان داده می‌شود.</div>
   <div id="result" class="hidden">
+    <div class="grab" aria-hidden="true"></div>
     <div class="sheet-head">
       <div class="street"><button class="iconbtn back" id="back" type="button" aria-label="بازگشت"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button><svg viewBox="0 0 24 24"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.5"/></svg><span id="streetName">—</span></div>
       <div class="price"><b id="avg">—</b><span>میلیون تومان برای هر متر مربع</span></div>
@@ -472,6 +475,32 @@ map.on("dragstart zoomstart", hideSheet);
 function clearPoint(){ point=null; streetName=""; revToken++; selLayer.clearLayers(); showSheet(); renderResult(); }
 $("back").onclick = () => { if(histPushed) history.back(); else clearPoint(); };
 window.addEventListener("popstate", () => { histPushed=false; if(point) clearPoint(); });
+/* کشیدن برگه به پایین با انگشت = دکمه‌ی برگشت */
+(function(){
+  let y0=0, t0=0, dy=0, on=false, tracking=false;
+  const scrolled = el => { for(; el && el!==sheetEl; el=el.parentElement){ if(el.scrollHeight>el.clientHeight+1 && /(auto|scroll)/.test(getComputedStyle(el).overflowY) && el.scrollTop>0) return true; } return false; };
+  sheetEl.addEventListener("touchstart",e=>{
+    tracking = !!point && e.touches.length===1 && !/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName) && !scrolled(e.target);
+    on=false; dy=0; y0=e.touches[0].clientY; t0=e.timeStamp;
+  },{passive:true});
+  sheetEl.addEventListener("touchmove",e=>{
+    if(!tracking) return;
+    const d=e.touches[0].clientY-y0;
+    if(!on){ if(d>8 && !scrolled(e.target)){ on=true; sheetEl.classList.add("dragging"); } else if(d<-8){ tracking=false; return; } else return; }
+    dy=Math.max(0,d); sheetEl.style.transform="translateY("+dy+"px)"; e.preventDefault();
+  },{passive:false});
+  const end=e=>{
+    if(!on){ tracking=false; return; }
+    const v=dy/Math.max(1,e.timeStamp-t0), far=dy>Math.min(110,sheetEl.offsetHeight*.3) || v>0.6;
+    on=false; tracking=false; sheetEl.classList.remove("dragging");
+    if(far){
+      sheetEl.style.transition="transform .18s ease-out"; sheetEl.style.transform="translateY(calc(100% + 40px))";
+      setTimeout(()=>{ sheetEl.style.transition="none"; $("back").onclick();
+        requestAnimationFrame(()=>requestAnimationFrame(()=>{ sheetEl.style.transition=""; sheetEl.style.transform=""; setSheetH(); })); },190);
+    } else { sheetEl.style.transform=""; }
+  };
+  sheetEl.addEventListener("touchend",end); sheetEl.addEventListener("touchcancel",end);
+})();
 /* کلید فروش/اجاره: اجاره تا بارگذاری داده‌ی آگهی‌های اجاره (C.rent.enabled) غیرفعال است */
 let priceMode = "sale";
 $("modeSale").onclick = () => { priceMode="sale"; $("modeSale").setAttribute("aria-pressed","true"); $("modeRent").setAttribute("aria-pressed","false"); };
