@@ -129,6 +129,10 @@ body{overflow:hidden}
 .seg button:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
 .grab{width:44px;height:5px;border-radius:5px;background:rgba(255,255,255,.4);margin:8px auto 0;flex:none}
 .sheet.dragging{transition:none!important}
+.inst{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:12px;height:42px;border-radius:14px;border:1px solid rgba(230,184,92,.55);background:linear-gradient(160deg,rgba(243,207,134,.28),rgba(230,184,92,.12));color:#f6dd9f;font:inherit;font-size:14px;font-weight:700;cursor:pointer}
+.inst svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.inst:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.ios{margin-top:10px;font-size:12.5px;line-height:1.8;color:var(--ink-2)}
 .back{width:32px;height:32px;border-radius:11px;flex:none}
 .back svg{width:18px;height:18px}
 @media (min-width:820px){.fab{right:auto;left:14px;bottom:14px}}
@@ -188,7 +192,6 @@ body{overflow:hidden}
     <span class="me hidden" id="me" aria-hidden="true"></span>
     <h1>قیمت هر متر مربع<small id="dataInfo">در حال خواندن داده…</small></h1>
     <div class="seg" role="group" aria-label="نوع قیمت"><button type="button" id="modeSale" aria-pressed="true">فروش</button><button type="button" id="modeRent" aria-pressed="false" aria-disabled="true">اجاره</button></div>
-    <button class="iconbtn hidden" id="install" aria-label="نصب اپ"><svg viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19h14"/></svg></button>
   </div>
   <div class="chips glass" id="chips" role="group" aria-label="سال ساخت"></div>
 </div>
@@ -196,7 +199,10 @@ body{overflow:hidden}
 <button class="fab" id="locate" type="button" aria-label="موقعیت من"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg></button>
 
 <section class="sheet glass" id="sheet" aria-live="polite">
-  <div class="empty" id="hint"><b>یک نقطه روی نقشه انتخاب کنید</b><br>میانگین قیمت هر متر مربع نمونه‌های اطراف آن نقطه، برای سال ساخت انتخاب‌شده نشان داده می‌شود.</div>
+  <div class="empty" id="hint"><b>یک نقطه روی نقشه انتخاب کنید</b><br>میانگین قیمت هر متر مربع نمونه‌های اطراف آن نقطه، برای سال ساخت انتخاب‌شده نشان داده می‌شود.
+    <button class="inst hidden" id="install" type="button"><svg viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19h14"/></svg>نصب برنامه روی گوشی</button>
+    <div class="ios hidden" id="iosHint">برای نصب در آیفون: دکمه‌ی اشتراک‌گذاری را بزنید و «Add to Home Screen» را انتخاب کنید.</div>
+  </div>
   <div id="result" class="hidden">
     <div class="grab" aria-hidden="true"></div>
     <div class="sheet-head">
@@ -632,6 +638,10 @@ let deferredInstall=null;
 window.addEventListener("beforeinstallprompt",e=>{ e.preventDefault(); deferredInstall=e; $("install").classList.remove("hidden"); });
 $("install").onclick=async()=>{ if(!deferredInstall) return; deferredInstall.prompt(); await deferredInstall.userChoice; deferredInstall=null; $("install").classList.add("hidden"); };
 window.addEventListener("appinstalled",()=>$("install").classList.add("hidden"));
+(function(){   // آیفون beforeinstallprompt ندارد؛ فقط راهنما نشان داده می‌شود
+  const ios=/iphone|ipad|ipod/i.test(navigator.userAgent), standalone=window.matchMedia("(display-mode: standalone)").matches||navigator.standalone;
+  if(ios && !standalone) $("iosHint").classList.remove("hidden");
+})();
 if("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register("sw.js").catch(()=>{});
 
 window.__app = {analyse, setYear:(y,t)=>{years.clear(); if(y!=null) (Array.isArray(y)?y:[y]).forEach(v=>years.add(v)); tol=!!t; refresh();}, pick};
