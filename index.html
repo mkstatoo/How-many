@@ -106,6 +106,25 @@ body{overflow:hidden}
 .est-bd i{font-style:normal;font-size:11.5px;padding:3px 9px;border-radius:999px;border:1px solid var(--glass-line);color:var(--ink-2);background:rgba(255,255,255,.05)}
 .est-bd i.neg{color:#f5b3aa}.est-bd i.pos{color:#8fe0d3}
 @media (max-width:819px){.sheet.est-open{max-height:86vh}}
+/* برگه هنگام حرکت نقشه پنهان می‌شود و با انتخاب نقطه بالا می‌آید */
+.sheet.away{transform:translateY(calc(100% + 40px));pointer-events:none;visibility:hidden;transition:transform .25s ease,visibility 0s linear .25s}
+/* دکمه موقعیت من: گوشه‌ی پایین-راست، بالای برگه (مثل گوگل‌مپ) */
+.fab{position:fixed;z-index:520;right:14px;bottom:calc(var(--sheet-h,0px) + max(10px,env(safe-area-inset-bottom)) + 14px);width:48px;height:48px;border-radius:50%;border:1px solid rgba(255,255,255,.2);
+  background:linear-gradient(160deg,rgba(255,255,255,.22),rgba(255,255,255,.06)),rgba(9,24,31,.62);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);color:var(--ink);display:grid;place-items:center;cursor:pointer;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 8px 20px rgba(0,0,0,.4)}
+.fab svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.fab:active{transform:scale(.94)}
+.fab:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+@media (prefers-reduced-motion:no-preference){.fab{transition:bottom .25s ease}}
+/* بالای صفحه: عنوان + کلید فروش/اجاره */
+.seg{flex:none;display:flex;padding:3px;border-radius:13px;background:rgba(0,0,0,.26);border:1px solid rgba(255,255,255,.12)}
+.seg button{border:0;background:none;color:var(--ink-2);font:inherit;font-size:13px;font-weight:700;padding:6px 14px;border-radius:10px;cursor:pointer}
+.seg button[aria-pressed=true]{background:linear-gradient(160deg,#f3cf86,var(--gold));color:#241a05;box-shadow:inset 0 1px 0 rgba(255,255,255,.6)}
+.seg button[aria-disabled=true]:not([aria-pressed=true]){opacity:.6}
+.seg button:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+.back{width:32px;height:32px;border-radius:11px;flex:none}
+.back svg{width:18px;height:18px}
+@media (min-width:820px){.fab{right:auto;left:14px;bottom:14px}}
 
 /* desktop: side panel */
 @media (min-width:820px){
@@ -161,17 +180,19 @@ body{overflow:hidden}
   <div class="bar glass">
     <span class="me hidden" id="me" aria-hidden="true"></span>
     <h1>قیمت هر متر مربع<small id="dataInfo">در حال خواندن داده…</small></h1>
+    <div class="seg" role="group" aria-label="نوع قیمت"><button type="button" id="modeSale" aria-pressed="true">فروش</button><button type="button" id="modeRent" aria-pressed="false" aria-disabled="true">اجاره</button></div>
     <button class="iconbtn hidden" id="install" aria-label="نصب اپ"><svg viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19h14"/></svg></button>
-    <button class="iconbtn" id="locate" aria-label="موقعیت من"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
   </div>
   <div class="chips glass" id="chips" role="group" aria-label="سال ساخت"></div>
 </div>
+
+<button class="fab" id="locate" type="button" aria-label="موقعیت من"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg></button>
 
 <section class="sheet glass" id="sheet" aria-live="polite">
   <div class="empty" id="hint"><b>یک نقطه روی نقشه انتخاب کنید</b><br>میانگین قیمت هر متر مربع نمونه‌های اطراف آن نقطه، برای سال ساخت انتخاب‌شده نشان داده می‌شود.</div>
   <div id="result" class="hidden">
     <div class="sheet-head">
-      <div class="street"><svg viewBox="0 0 24 24"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.5"/></svg><span id="streetName">—</span></div>
+      <div class="street"><button class="iconbtn back" id="back" type="button" aria-label="بازگشت"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button><svg viewBox="0 0 24 24"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.5"/></svg><span id="streetName">—</span></div>
       <div class="price"><b id="avg">—</b><span>میلیون تومان برای هر متر مربع</span></div>
       <div class="range" id="range"></div>
       <div class="facts" id="facts"></div>
@@ -430,7 +451,23 @@ function track(lat,lng){
   fetch(C.pickUrl,{method:"POST",keepalive:true,headers:{"Content-Type":"application/json","x-user-token":u.token},
     body:JSON.stringify({lat:+lat.toFixed(4),lng:+lng.toFixed(4),found:a.sel.length,min:C.minListings})}).catch(()=>{});
 }
+/* برگه‌ی نتیجه: پنهان‌شدن هنگام حرکت نقشه، نمایش با انتخاب نقطه، دکمه‌ی برگشت (و دکمه‌ی برگشت گوشی) */
+let histPushed = false;
+const sheetEl = $("sheet"), fabEl = $("locate");
+const setSheetH = () => document.documentElement.style.setProperty("--sheet-h", sheetEl.classList.contains("away") ? "0px" : sheetEl.offsetHeight+"px");
+if(window.ResizeObserver) new ResizeObserver(setSheetH).observe(sheetEl);
+const hideSheet = () => { if(!sheetEl.classList.contains("away")){ sheetEl.classList.add("away"); setSheetH(); } };
+const showSheet = () => { if(sheetEl.classList.contains("away")){ sheetEl.classList.remove("away"); setSheetH(); } };
+map.on("dragstart zoomstart", hideSheet);
+function clearPoint(){ point=null; streetName=""; revToken++; selLayer.clearLayers(); showSheet(); renderResult(); }
+$("back").onclick = () => { if(histPushed) history.back(); else clearPoint(); };
+window.addEventListener("popstate", () => { histPushed=false; if(point) clearPoint(); });
+/* کلید فروش/اجاره: اجاره تا بارگذاری داده‌ی آگهی‌های اجاره (C.rent.enabled) غیرفعال است */
+let priceMode = "sale";
+$("modeSale").onclick = () => { priceMode="sale"; $("modeSale").setAttribute("aria-pressed","true"); $("modeRent").setAttribute("aria-pressed","false"); };
+$("modeRent").onclick = () => { if(!(C.rent && C.rent.enabled)) return toast("قیمت اجاره هنوز فعال نشده است؛ داده‌ی آگهی‌های اجاره (ودیعه و اجاره) بارگذاری نشده."); };
 async function pick(lat,lng){
+  showSheet(); if(!histPushed){ try{ history.pushState({arz:1},""); histPushed=true; }catch(_){} }
   point={lat,lng}; renderResult(); track(lat,lng);
   await reverse(lat,lng);
   if(point && point.lat===lat && point.lng===lng) renderResult();
