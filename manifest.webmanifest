@@ -42,6 +42,13 @@
       "type": "image/png",
       "form_factor": "narrow",
       "label": "انتخاب نقطه روی نقشه مشهد"
+    },
+    {
+      "src": "screenshots/estimate.png",
+      "sizes": "720x1453",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "قیمت هر متر مربع و تخمین قیمت ملک شما"
     }
   ]
 }
