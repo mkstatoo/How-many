@@ -300,7 +300,7 @@ function serveStatic(req,res){
     const ext = path.extname(file).toLowerCase(), gzOk = /\.(html|js|css|json|svg|webmanifest)$/.test(ext) && /\bgzip\b/.test(req.headers["accept-encoding"]||"");
     const hit = STATIC_CACHE.get(file);
     const finish = (buf,gz)=>{
-      res.writeHead(200,{"Content-Type":MIME[ext]||"application/octet-stream","Cache-Control":/\.(html|js|webmanifest)$/.test(ext)?"no-cache":"public, max-age=86400","X-Content-Type-Options":"nosniff","Vary":"Accept-Encoding",...(gz?{"Content-Encoding":"gzip"}:{})});
+      res.writeHead(200,{"Content-Type":MIME[ext]||"application/octet-stream","Cache-Control":(/\.(html|js|webmanifest)$/.test(ext)||p.startsWith("/.well-known/"))?"no-cache":"public, max-age=86400","X-Content-Type-Options":"nosniff","Vary":"Accept-Encoding",...(gz?{"Content-Encoding":"gzip"}:{})});
       res.end(buf);
     };
     if(hit && hit.m===st.mtimeMs){ const useGz = gzOk && hit.gz!==hit.raw; return finish(useGz?hit.gz:hit.raw, useGz); }
