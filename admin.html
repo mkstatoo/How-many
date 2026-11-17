@@ -238,7 +238,9 @@ async function loadUsers(){
   $("utb").replaceChildren(...j.users.map(u=>{
     const btn=h("button",{class:"btn"+(u.blocked?"":" danger")},u.blocked?"رفع مسدودی":"مسدود کردن");
     btn.onclick=async()=>{ btn.disabled=true; await api("/api/admin/users/block",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:u.id,blocked:!u.blocked})}); loadUsers(); };
-    return h("tr",{},h("td",{},u.username),h("td",{class:"ltr"},u.mobile),h("td",{},dt(u.createdAt)),h("td",{},h("span",{class:"pill"+(u.blocked?" off":"")},u.blocked?"مسدود":"فعال")),h("td",{},btn));
+    const del=h("button",{class:"btn"},"حذف");
+    del.onclick=async()=>{ if(!confirm("حساب «"+u.username+"» برای همیشه حذف شود؟ (اگر مسدود است، با حذف می‌تواند دوباره ثبت‌نام کند)")) return; del.disabled=true; await api("/api/admin/users/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:u.id})}); loadUsers(); };
+    return h("tr",{},h("td",{},u.username),h("td",{class:"ltr"},u.mobile),h("td",{},dt(u.createdAt)),h("td",{},h("span",{class:"pill"+(u.blocked?" off":"")},u.blocked?"مسدود":"فعال")),h("td",{},btn," ",del));
   }));
 }
 $("q").oninput=()=>{ clearTimeout(qT); qT=setTimeout(loadUsers,250); };

@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0a1a21">
+<title>حریم خصوصی — injachande</title>
+<link rel="icon" href="icons/icon-192.png">
+<style>
+@font-face{font-family:"Vazirmatn";src:url("vendor/fonts/Vazirmatn.woff2") format("woff2");font-weight:100 900;font-display:swap}
+:root{--bg:#0a1a21;--ink:#f1f6f7;--ink-2:#d6e2e5;--ink-3:#c1d1d6;--gold:#e6b85c;--teal:#6fe0cf;--line:rgba(160,205,215,.2)}
+*{box-sizing:border-box;margin:0}
+body{background:var(--bg);color:var(--ink-2);font-family:"Vazirmatn",system-ui,sans-serif;line-height:2;font-size:15px;padding:max(16px,env(safe-area-inset-top)) 16px 40px}
+main{max-width:720px;margin:0 auto}
+a{color:var(--teal)}
+a.back{display:inline-block;margin-bottom:14px;font-size:14px;text-decoration:none}
+h1{font-size:24px;color:var(--ink);font-weight:800;margin-bottom:4px}
+.upd{font-size:13px;color:var(--ink-3);margin-bottom:22px}
+section{border:1px solid var(--line);background:rgba(255,255,255,.04);border-radius:16px;padding:14px 16px;margin-bottom:12px}
+h2{font-size:16px;color:var(--gold);font-weight:700;margin-bottom:4px}
+ul{padding-inline-start:20px}
+li{margin:2px 0}
+b{color:var(--ink)}
+.hidden{display:none}
+button.danger{font:inherit;font-size:14px;font-weight:700;color:#f5b3aa;background:rgba(239,123,108,.12);border:1px solid rgba(239,123,108,.5);border-radius:12px;padding:8px 16px;cursor:pointer}
+button.danger[disabled]{opacity:.6}
+</style>
+</head>
+<body>
+<main>
+<a class="back" href="./">← بازگشت به برنامه</a>
+<h1>حریم خصوصی</h1>
+<p class="upd">آخرین به‌روزرسانی: ۲۶ آبان ۱۴۰۵ · برنامه: injachande (قیمت هر متر مربع ملک در مشهد)</p>
+
+<section>
+<h2>۱. چه اطلاعاتی از شما ذخیره می‌شود</h2>
+<ul>
+<li>هنگام ثبت‌نام: <b>شماره موبایل</b> و <b>نام کاربری</b> که خودتان وارد می‌کنید، یک شناسه‌ی داخلی و زمان ثبت‌نام.</li>
+<li>برای ورود خودکار، یک کد دسترسی تصادفی ساخته می‌شود. روی سرور فقط <b>رمزنگاری‌شده‌ی یک‌طرفه</b> (هش) آن نگه‌داری می‌شود و خود کد در دستگاه شما می‌ماند.</li>
+<li>هیچ اطلاعات دیگری (نام واقعی، ایمیل، موقعیت زنده‌ی دستگاه، مخاطبان، عکس و…) از شما گرفته نمی‌شود.</li>
+</ul>
+</section>
+
+<section>
+<h2>۲. نقطه‌هایی که روی نقشه انتخاب می‌کنید</h2>
+<p>برای بهبود پوشش داده، فقط <b>شمارش ناشناس</b> انتخاب‌ها در خانه‌هایی به ابعاد حدود ۲۵۰ متر ذخیره می‌شود. مختصات نقطه برای ثبت همین شمارش به سرور می‌رسد، ولی فقط خانه‌ی حدود ۲۵۰ متری ذخیره می‌شود، نه مختصات دقیق، و این شمارش به نام، شماره یا حساب شما وصل نیست. دکمه‌ی «موقعیت من» هم فقط همین نقطه را انتخاب می‌کند و موقعیت شما را پیوسته دنبال نمی‌کند.</p>
+</section>
+
+<section>
+<h2>۳. مشخصات ملک در بخش «تخمین قیمت»</h2>
+<p>متراژ، سال ساخت و ویژگی‌هایی که در فرم تخمین وارد می‌کنید در همان دستگاه و در مرورگر شما محاسبه می‌شود؛ <b>به سرور فرستاده یا ذخیره نمی‌شود</b>.</p>
+</section>
+
+<section>
+<h2>۴. داده‌ی آگهی‌ها</h2>
+<p>قیمت‌ها از آگهی‌های عمومی ملک جمع‌آوری شده‌اند. نسخه‌ای که به برنامه می‌رسد فقط مشخصات ملک و موقعیت تقریبی را دارد و عنوان و لینک آگهی یا اطلاعات تماس صاحب آگهی را ندارد.</p>
+</section>
+
+<section>
+<h2>۵. چه چیزی در دستگاه شما نگه داشته می‌شود</h2>
+<p>نام کاربری و کد دسترسی در حافظه‌ی مرورگر (localStorage) و فایل‌های برنامه برای سریع‌تر باز شدن در حافظه‌ی نهان (cache) ذخیره می‌شود. با پاک کردن اطلاعات سایت یا حذف برنامه از بین می‌رود.</p>
+</section>
+
+<section>
+<h2>۶. سرویس‌های بیرونی</h2>
+<ul>
+<li><b>نقشه:</b> تصویر نقشه از سرویس نقشه (map.ir یا نقشه‌ی جایگزین CARTO/OpenStreetMap) بارگیری می‌شود. این سرویس‌ها مانند هر سایت دیگری آدرس IP و ناحیه‌ی نقشه‌ی در حال نمایش را می‌بینند.</li>
+<li><b>نام معبر:</b> اگر این قابلیت فعال باشد، مختصات نقطه‌ی انتخاب‌شده برای پیدا کردن نام خیابان به سرویس map.ir فرستاده می‌شود.</li>
+</ul>
+<p>سیاست حریم خصوصی این سرویس‌ها جداست.</p>
+</section>
+
+<section>
+<h2>۷. آدرس IP و گزارش‌ها</h2>
+<p>سرور آدرس IP را فقط برای محدود کردن تعداد درخواست‌ها (جلوگیری از سوءاستفاده) در حافظه‌ی موقت نگه می‌دارد و آن را ذخیره نمی‌کند. ورودهای ناموفقِ پنل مدیریت ثبت می‌شود. وب‌سرور ممکن است گزارش‌های فنی استاندارد (مانند IP و زمان درخواست) را برای مدتی محدود نگه دارد.</p>
+</section>
+
+<section>
+<h2>۸. استفاده از اطلاعات</h2>
+<p>شماره موبایل و نام کاربری فقط برای ثبت‌نام، دسترسی به داده، جلوگیری از سوءاستفاده استفاده می‌شود. این اطلاعات <b>فروخته یا با شخص ثالثی به اشتراک گذاشته نمی‌شود</b>، مگر طبق الزام قانونی.</p>
+</section>
+
+<section>
+<h2>۹. حذف اطلاعات</h2>
+<p>هر زمان می‌توانید حساب خود را خودتان حذف کنید. پس از حذف، شماره موبایل و نام کاربری شما از سرور پاک می‌شود و برنامه دوباره ثبت‌نام می‌خواهد. (حساب مسدودشده را فقط مدیر می‌تواند حذف کند.)</p>
+<p><button id="delBtn" type="button" class="danger hidden">حذف حساب من</button> <span id="delMsg"></span></p>
+<p id="contact" class="hidden"></p>
+</section>
+
+<section>
+<h2>۱۰. محدودیت</h2>
+<p>قیمت‌های نمایش‌داده‌شده برآوردی و بر پایه‌ی قیمت پیشنهادی آگهی‌هاست، نه قیمت معامله، و جایگزین کارشناسی رسمی نیست.</p>
+</section>
+
+<section>
+<h2>۱۱. تغییرات</h2>
+<p>اگر این متن تغییر کند، نسخه‌ی تازه در همین صفحه و با تاریخ به‌روزرسانی منتشر می‌شود.</p>
+</section>
+</main>
+<script src="config.js"></script>
+<script>
+(function(){
+  var btn=document.getElementById("delBtn"), msg=document.getElementById("delMsg"), u=null;
+  try{ u=JSON.parse(localStorage.getItem("arzesh_user")); }catch(e){}
+  if(u && u.token) btn.classList.remove("hidden");
+  else msg.textContent="برای حذف حساب، این صفحه را در همان مرورگر یا برنامه‌ای باز کنید که در آن ثبت‌نام کرده‌اید.";
+  btn.onclick=function(){
+    if(!confirm("حساب شما و شماره موبایل ذخیره‌شده برای همیشه حذف شود؟")) return;
+    btn.disabled=true; msg.textContent="";
+    fetch("api/me/delete",{method:"POST",headers:{"x-user-token":u.token}}).then(function(r){
+      return r.json().catch(function(){return {};}).then(function(j){
+        if(r.ok || r.status===401){ try{ localStorage.removeItem("arzesh_user"); }catch(e){} btn.classList.add("hidden"); msg.textContent="حساب شما حذف شد."; }
+        else { btn.disabled=false; msg.textContent=j.error||"حذف انجام نشد."; }
+      });
+    }).catch(function(){ btn.disabled=false; msg.textContent="اتصال برقرار نشد. دوباره تلاش کنید."; });
+  };
+})();
+</script>
+<script>
+(function(){
+  var c = (window.APP_CONFIG && window.APP_CONFIG.contact) || "", el = document.getElementById("contact");
+  if(!c) return;
+  el.textContent = "برای درخواست حذف یا هر پرسش درباره‌ی حریم خصوصی: ";
+  var a = document.createElement(/@/.test(c) ? "a" : "span"); a.textContent = c;
+  if(/@/.test(c)) a.href = "mailto:" + c;
+  a.dir = "ltr"; el.appendChild(a); el.classList.remove("hidden");
+})();
+</script>
+</body>
+</html>
