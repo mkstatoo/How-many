@@ -23,7 +23,7 @@ const MIME = {".html":"text/html; charset=utf-8",".js":"text/javascript; charset
   ".json":"application/json; charset=utf-8",".webmanifest":"application/manifest+json",".png":"image/png",".svg":"image/svg+xml",
   ".woff2":"font/woff2",".ico":"image/x-icon"};
 // این مسیرها هرگز مستقیم سرو نمی‌شوند. داده فقط از /api/data و با ثبت‌نام.
-const BLOCKED = /^\/(storage|data|server\.js|package\.json|readme\.md|install\.sh|node_modules)(\/|$)|(^|\/)\./i;   // پوشه‌های داخلی و هر فایل/پوشه‌ی نقطه‌دار (.git و...)
+const BLOCKED = /^\/(storage|data|server\.js|package\.json|readme\.md|install\.sh|node_modules)(\/|$)|(^|\/)\.(?!well-known(\/|$))/i;   // پوشه‌های داخلی و هر فایل/پوشه‌ی نقطه‌دار (.git و...) به‌جز .well-known (assetlinks.json برای نسخه‌ی اندروید)
 
 /* ---------- نرمال‌سازی و اعتبارسنجی (همان منطق سمت کاربر) ---------- */
 const latinDigits = s => String(s).replace(/[۰-۹]/g,c=>"۰۱۲۳۴۵۶۷۸۹".indexOf(c)).replace(/[٠-٩]/g,c=>"٠١٢٣٤٥٦٧٨٩".indexOf(c));
@@ -178,6 +178,22 @@ async function pick(req,res){
   noContent(res);
 }
 
+/* حذف حساب: توسط خود کاربر (با کد دسترسی) یا مدیر. کاربر مسدود خودش نمی‌تواند حذف کند (دور زدن مسدودی) */
+function removeUser(u){
+  const i = users.indexOf(u); if(i<0) return false;
+  users.splice(i,1);
+  try{ writeJson(USERS_FILE,users); }catch(e){ users.splice(i,0,u); console.error("save failed:",e.message); return false; }
+  byToken.delete(u.th); return true;
+}
+async function deleteMe(req,res){
+  const u = userFrom(req);
+  if(!u) return send(res,401,{error:"unregistered"});
+  if(u.blocked) return send(res,403,{error:"حساب شما مسدود است؛ برای حذف با مدیر تماس بگیرید."});
+  if(limited("del:"+u.id,5,600000)) return send(res,429,{error:"rate"});
+  if(!removeUser(u)) return send(res,500,{error:"حذف انجام نشد. دوباره تلاش کنید."});
+  send(res,200,{ok:true});
+}
+
 /* ---------- مدیر ---------- */
 const sessions = new Map();   // توکن نشست → زمان انقضا
 function isAdmin(req){
@@ -232,6 +248,12 @@ async function adminApi(req,res,url,qs){
     const prev = !!u.blocked; u.blocked = !!j.blocked;
     try{ writeJson(USERS_FILE,users); }catch(e){ u.blocked=prev; return send(res,500,{error:"ذخیره انجام نشد."}); }
     return send(res,200,{ok:true,user:publicUser(u)});
+  }
+  if(url==="/api/admin/users/delete" && req.method==="POST"){
+    const j = await jsonBody(req,res); if(!j) return;
+    const u = users.find(x=>x.id===j.id); if(!u) return send(res,404,{error:"کاربر پیدا نشد."});
+    if(!removeUser(u)) return send(res,500,{error:"حذف انجام نشد."});
+    return send(res,200,{ok:true});
   }
   if(url==="/api/admin/picks"){
     const cells = Object.values(picks.cells).sort((a,b)=>b.n-a.n).slice(0,500);
@@ -297,6 +319,7 @@ http.createServer(async (req,res)=>{
     const u = new URL(req.url,"http://x"), url = u.pathname;
     if(url==="/api/register"){ if(req.method==="POST") return await register(req,res); res.writeHead(405,{Allow:"POST"}); return res.end(); }
     if(url==="/api/data"){ if(req.method==="GET") return serveData(req,res); res.writeHead(405,{Allow:"GET"}); return res.end(); }
+    if(url==="/api/me/delete"){ if(req.method==="POST") return await deleteMe(req,res); res.writeHead(405,{Allow:"POST"}); return res.end(); }
     if(url==="/api/pick"){ if(req.method==="POST") return await pick(req,res); res.writeHead(405,{Allow:"POST"}); return res.end(); }
     if(url.startsWith("/api/admin/")) return await adminApi(req,res,url,u.searchParams);
     if(req.method!=="GET" && req.method!=="HEAD"){ res.writeHead(405); return res.end(); }

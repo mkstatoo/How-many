@@ -71,3 +71,10 @@ bash install.sh - 'رمز-مدیر'
       python3 tools/calibrate_pricing.py data/listings.xlsx /tmp/out --current-year 1405
       cp /tmp/out/pricing_model.json pricing-model.json
   سال جاری (`current_persian_year`) برای محاسبه‌ی سن بنا هم در مدل ذخیره می‌شود؛ اپ همان را استفاده می‌کند.
+
+
+## انتشار در بازار (نسخه‌ی اندروید)
+راهنمای کامل در `twa/README.md` است: `twa/twa-manifest.json` (تنظیمات Bubblewrap)، `tools/make-assetlinks.sh` (ساخت `.well-known/assetlinks.json` از روی keystore)، `privacy.html` (حریم خصوصی و حذف حساب) و `screenshots/`.
+
+## حذف حساب
+کاربر از صفحه‌ی `privacy.html` (دکمه‌ی «حذف حساب من») یا مدیر از پنل (دکمه‌ی «حذف») می‌تواند حساب را پاک کند. حساب مسدود را فقط مدیر حذف می‌کند تا مسدودی دور زده نشود. در `config.js` مقدار `contact` را برای نمایش در صفحه‌ی حریم خصوصی پر کنید.

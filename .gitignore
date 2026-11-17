@@ -6,3 +6,11 @@ data/*.csv
 *.tmp
 node_modules/
 .env
+
+# نسخه‌ی اندروید (TWA): کلید امضا و خروجی‌های ساخت هرگز در گیت نگذارید
+*.keystore
+*.jks
+twa/build/
+twa/app/
+twa/*.apk
+twa/*.aab
