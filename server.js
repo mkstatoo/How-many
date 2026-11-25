@@ -13,6 +13,10 @@ const PICKS_FILE = path.join(STORAGE, "picks.json");
 const BACKUPS = path.join(STORAGE, "backups");
 const DATA_FILE = path.join(ROOT, "data", "listings.xlsx");        // فایل کامل (عنوان و لینک آگهی دارد): فقط برای مدیر
 const PUBLIC_FILE = path.join(STORAGE, "public-data.json");        // نسخه‌ی پاک‌شده برای کاربران: بدون عنوان و لینک
+const RENT_FILE = path.join(ROOT, "data", "rent.xlsx");             // داده‌ی اجاره: جدا از داده‌ی فروش بارگذاری می‌شود
+const RENT_PUBLIC_FILE = path.join(STORAGE, "rent-public.json");   // نسخه‌ی پاک‌شده و مدل اجاره برای کاربران
+const RENT_CLEAN_FILE = path.join(STORAGE, "rent-clean.json");     // ردیف‌های تمیزشده؛ با تغییر نرخ تبدیل، مدل از روی همین بدون خواندن دوباره‌ی اکسل ساخته می‌شود
+const RENT_SETTINGS_FILE = path.join(STORAGE, "rent-settings.json");
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
 const ADMIN_ON = ADMIN_PASSWORD.length >= 8;
 const BOUNDS = { south: 36.10, north: 36.50, west: 59.35, east: 59.85 };   // باید با config.js یکی باشد
@@ -147,6 +151,64 @@ function initPublic(){
 }
 // ساخت نسخه‌ی عمومی بعد از بالا آمدن سرور انجام می‌شود (برای فایل‌های بزرگ چند ثانیه طول می‌کشد)
 
+
+/* ---------- اجاره: پاک‌سازی خودکار + مدل + نرخ تبدیل قابل تنظیم (rent-core.js و rent-pricing.js) ----------
+   فایل xlsx اجاره عنوان و لینک دارد و فقط برای مدیر است. به کاربران فقط {مختصات، متراژ، سال، ودیعه، اجاره} و پارامترهای مدل می‌رسد. */
+const { Worker } = require("worker_threads");
+const DEFAULT_RENT_RATE = 0.03;                               // سهم ماهانه‌ی ودیعه: ۳٪ = هر ۱ میلیارد ودیعه ≈ ۳۰ میلیون اجاره
+let rentSettings = readJson(RENT_SETTINGS_FILE, {rate:DEFAULT_RENT_RATE});
+if(!(rentSettings.rate>=0.005 && rentSettings.rate<=0.1)) rentSettings = {rate:DEFAULT_RENT_RATE};
+let rentJson = null, rentBusy = false;
+function fitInWorker(list, rate){                             // کالیبراسیون چند ثانیه (برای ۱۰ هزار ردیف ≈ ۱۰ ثانیه) طول می‌کشد؛ در thread جدا تا سرور برای کاربران قفل نشود
+  return new Promise((resolve,reject)=>{
+    const w = new Worker("const {parentPort,workerData:d}=require('worker_threads');try{parentPort.postMessage({ok:require(d.mod).fit(d.list,d.rate)})}catch(e){parentPort.postMessage({err:e.message})}",
+      {eval:true, workerData:{mod:path.join(ROOT,"rent-pricing.js"), list, rate}});
+    w.once("message",m=>m.err ? reject(new Error(m.err)) : resolve(m.ok)); w.once("error",reject);
+  });
+}
+async function makeRentPublic(clean, stats, rate){
+  const {model, used, dropped} = await fitInWorker(clean, rate);
+  return {v:1, built:new Date().toISOString(), rate, model,
+    stats:{...stats, outlier:stats.outlier+dropped, ok:used.length},
+    list:used.map(l=>({la:+l.lat.toFixed(4), lo:+l.lng.toFixed(4), a:l.area, y:l.year||0, d:Math.round(l.dep), r:Math.round(l.rent)}))};
+}
+function commitRent(pub, clean){
+  fs.mkdirSync(STORAGE,{recursive:true,mode:0o700});
+  const w = (f,o)=>{ const t=f+".tmp"; fs.writeFileSync(t,JSON.stringify(o)); fs.renameSync(t,f); };
+  w(RENT_PUBLIC_FILE,pub); if(clean) w(RENT_CLEAN_FILE,clean);
+  rentJson = mkPublic(pub);
+}
+const rentSummary = pub => pub ? {built:pub.built, rate:pub.rate, stats:pub.stats, k:pub.model.k, cv:pub.model.cv, area_bins:pub.model.area_bins, interval:pub.model.interval} : null;
+async function rentFromBuffer(buf, rate){
+  const XLSX = require("./vendor/xlsx.full.min.js"), Core = require("./rent-core.js");
+  const wb = XLSX.read(buf,{type:"buffer"});
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:null,raw:true});
+  const miss = Core.missingColumns(rows); if(miss.length) throw Object.assign(new Error("ستون‌های لازم در فایل نیست: "+miss.join("، ")),{user:true});
+  const {list,stats} = Core.buildRent(rows, loadConfig());
+  if(!list.length) throw Object.assign(new Error("هیچ ردیف قابل استفاده‌ای در این فایل نیست (مختصات، متراژ و ودیعه/اجاره لازم است). جایگزین نشد."),{user:true});
+  const pub = await makeRentPublic(list, stats, rate).catch(e=>{ throw Object.assign(e,{user:true}); });
+  return {pub, clean:{stats, list}};
+}
+async function initRent(){
+  try{
+    const dm = fs.statSync(RENT_FILE).mtimeMs; let pm = 0; try{ pm = fs.statSync(RENT_PUBLIC_FILE).mtimeMs; }catch(e){}
+    const pub = pm >= dm ? readJson(RENT_PUBLIC_FILE,null) : null;
+    if(pub && pub.v===1 && pub.rate===rentSettings.rate){ rentJson = mkPublic(pub); return; }
+    const {pub:p, clean} = await rentFromBuffer(fs.readFileSync(RENT_FILE), rentSettings.rate); commitRent(p, clean);
+  }catch(e){ if(e.code!=="ENOENT") console.error("داده‌ی اجاره ساخته نشد:",e.message); }
+}
+function serveRentData(req,res){
+  const admin = isAdmin(req), u = userFrom(req);
+  if(!admin){
+    if(!u) return send(res,401,{error:"ابتدا ثبت‌نام کنید.",code:"unregistered"});
+    if(u.blocked) return send(res,403,{error:"دسترسی حساب شما بسته شده است.",code:"blocked"});
+    if(limited("data:"+u.id,20,60000)) return send(res,429,{error:"درخواست زیاد است. کمی بعد دوباره امتحان کنید."});
+  }
+  if(!rentJson){ if(fs.existsSync(RENT_FILE)) return send(res,503,{error:"داده در حال آماده‌سازی است."}); return send(res,404,{error:"داده‌ی اجاره هنوز بارگذاری نشده است."}); }
+  const gz = /\bgzip\b/.test(req.headers["accept-encoding"]||"");
+  res.writeHead(200,{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store","Vary":"Accept-Encoding",...(gz?{"Content-Encoding":"gzip"}:{})}); res.end(gz?rentJson.gz:rentJson.buf);
+}
+
 // داده فقط برای کاربر ثبت‌نام‌شده و غیرمسدود (یا مدیر)؛ و فقط نسخه‌ی پاک‌شده
 function serveData(req,res){
   const admin = isAdmin(req), u = userFrom(req);
@@ -261,7 +323,7 @@ async function adminApi(req,res,url,qs){
   }
   if(url==="/api/admin/data-info"){
     let info = {exists:false}; try{ const st=fs.statSync(DATA_FILE); info={exists:true,size:st.size,mtime:st.mtime.toISOString()}; }catch(e){}
-    let backups=[]; try{ backups = fs.readdirSync(BACKUPS).filter(f=>f.endsWith(".xlsx")).sort().reverse().map(f=>({name:f,size:fs.statSync(path.join(BACKUPS,f)).size})); }catch(e){}
+    let backups=[]; try{ backups = fs.readdirSync(BACKUPS).filter(f=>/^listings-.*\.xlsx$/.test(f)).sort().reverse().map(f=>({name:f,size:fs.statSync(path.join(BACKUPS,f)).size})); }catch(e){}
     return send(res,200,{...info,backups,usable:publicJson?publicJson.stats.ok:0,rows:publicJson?publicJson.stats.rows:0});
   }
   if(url==="/api/admin/data-file" && req.method==="GET"){
@@ -277,12 +339,60 @@ async function adminApi(req,res,url,qs){
       fs.mkdirSync(path.dirname(DATA_FILE),{recursive:true}); fs.mkdirSync(BACKUPS,{recursive:true,mode:0o700});
       if(fs.existsSync(DATA_FILE)){
         fs.copyFileSync(DATA_FILE, path.join(BACKUPS,"listings-"+new Date().toISOString().replace(/[:.]/g,"-")+".xlsx"));
-        fs.readdirSync(BACKUPS).filter(f=>f.endsWith(".xlsx")).sort().reverse().slice(5).forEach(f=>fs.unlinkSync(path.join(BACKUPS,f)));
+        fs.readdirSync(BACKUPS).filter(f=>/^listings-.*\.xlsx$/.test(f)).sort().reverse().slice(5).forEach(f=>fs.unlinkSync(path.join(BACKUPS,f)));
       }
       const t=DATA_FILE+".tmp"; fs.writeFileSync(t,buf); fs.renameSync(t,DATA_FILE);
       commitPublic(pub);
     }catch(e){ console.error("upload failed:",e.message); return send(res,500,{error:"ذخیره‌ی فایل انجام نشد."}); }
     return send(res,200,{ok:true,size:buf.length,usable:pub.stats.ok,rows:pub.stats.rows});
+  }
+  if(url==="/api/admin/rent-info"){
+    let info = {exists:false}; try{ const st=fs.statSync(RENT_FILE); info={exists:true,size:st.size,mtime:st.mtime.toISOString()}; }catch(e){}
+    let backups=[]; try{ backups = fs.readdirSync(BACKUPS).filter(f=>/^rent-.*\.xlsx$/.test(f)).sort().reverse().map(f=>({name:f,size:fs.statSync(path.join(BACKUPS,f)).size})); }catch(e){}
+    let summary = null; try{ summary = rentSummary(readJson(RENT_PUBLIC_FILE,null)); }catch(e){}
+    return send(res,200,{...info,backups,rate:rentSettings.rate,busy:rentBusy,preparing:info.exists&&!rentJson,summary});
+  }
+  if(url==="/api/admin/rent-file" && req.method==="GET"){
+    return fs.readFile(RENT_FILE,(err,buf)=>{ if(err) return send(res,404,{error:"فایل داده‌ی اجاره هنوز بارگذاری نشده است."});
+      res.writeHead(200,{"Content-Type":"application/octet-stream","Cache-Control":"no-store"}); res.end(buf); });
+  }
+  if(url==="/api/admin/rent" && req.method==="POST"){
+    if(rentBusy) return send(res,409,{error:"پردازش قبلی هنوز تمام نشده است. چند ثانیه بعد دوباره امتحان کنید."});
+    let buf; try{ buf = await readBody(req,MAX_UPLOAD); }catch(e){ return send(res,413,{error:"حجم فایل بیش از ۲۵ مگابایت است."}); }
+    if(buf.length<100 || buf.readUInt32LE(0)!==0x04034b50) return send(res,400,{error:"فایل xlsx معتبر نیست."});
+    rentBusy = true;
+    try{
+      let r; try{ r = await rentFromBuffer(buf, rentSettings.rate); }catch(e){ console.error("rent parse failed:",e.message); return send(res,400,{error:e.user?e.message:"این فایل خوانده نشد؛ xlsx سالم نیست."}); }
+      try{
+        fs.mkdirSync(path.dirname(RENT_FILE),{recursive:true}); fs.mkdirSync(BACKUPS,{recursive:true,mode:0o700});
+        if(fs.existsSync(RENT_FILE)){
+          fs.copyFileSync(RENT_FILE, path.join(BACKUPS,"rent-"+new Date().toISOString().replace(/[:.]/g,"-")+".xlsx"));
+          fs.readdirSync(BACKUPS).filter(f=>/^rent-.*\.xlsx$/.test(f)).sort().reverse().slice(5).forEach(f=>fs.unlinkSync(path.join(BACKUPS,f)));
+        }
+        const t=RENT_FILE+".tmp"; fs.writeFileSync(t,buf); fs.renameSync(t,RENT_FILE);
+        commitRent(r.pub, r.clean);
+      }catch(e){ console.error("rent upload failed:",e.message); return send(res,500,{error:"ذخیره‌ی فایل انجام نشد."}); }
+      return send(res,200,{ok:true,size:buf.length,summary:rentSummary(r.pub)});
+    } finally { rentBusy = false; }
+  }
+  if(url==="/api/admin/rent-settings" && req.method==="POST"){
+    const j = await jsonBody(req,res); if(!j) return;
+    const pct = Number(j.percent), rate = pct/100;
+    if(!(pct>=0.5 && pct<=10)) return send(res,400,{error:"نرخ باید بین ۰٫۵ تا ۱۰ درصد در ماه باشد."});
+    if(rentBusy) return send(res,409,{error:"پردازش قبلی هنوز تمام نشده است. چند ثانیه بعد دوباره امتحان کنید."});
+    const prev = rentSettings;
+    const save = ()=>{ writeJson(RENT_SETTINGS_FILE,{rate}); rentSettings = {rate}; };
+    if(!fs.existsSync(RENT_FILE)){ try{ save(); }catch(e){ return send(res,500,{error:"ذخیره انجام نشد."}); } return send(res,200,{ok:true,rate,summary:null}); }
+    rentBusy = true;
+    try{
+      const clean = readJson(RENT_CLEAN_FILE,null); let pub;
+      try{
+        if(clean && clean.list) pub = await makeRentPublic(clean.list, clean.stats, rate);
+        else{ const r = await rentFromBuffer(fs.readFileSync(RENT_FILE), rate); pub = r.pub; commitRent(pub, r.clean); }
+      }catch(e){ console.error("rent refit failed:",e.message); return send(res,400,{error:"با این نرخ مدل ساخته نشد: "+e.message}); }
+      try{ save(); commitRent(pub, null); }catch(e){ rentSettings = prev; return send(res,500,{error:"ذخیره انجام نشد."}); }
+      return send(res,200,{ok:true,rate,summary:rentSummary(pub)});
+    } finally { rentBusy = false; }
   }
   send(res,404,{error:"پیدا نشد."});
 }
@@ -319,6 +429,7 @@ http.createServer(async (req,res)=>{
     const u = new URL(req.url,"http://x"), url = u.pathname;
     if(url==="/api/register"){ if(req.method==="POST") return await register(req,res); res.writeHead(405,{Allow:"POST"}); return res.end(); }
     if(url==="/api/data"){ if(req.method==="GET") return serveData(req,res); res.writeHead(405,{Allow:"GET"}); return res.end(); }
+    if(url==="/api/rent-data"){ if(req.method==="GET") return serveRentData(req,res); res.writeHead(405,{Allow:"GET"}); return res.end(); }
     if(url==="/api/me/delete"){ if(req.method==="POST") return await deleteMe(req,res); res.writeHead(405,{Allow:"POST"}); return res.end(); }
     if(url==="/api/pick"){ if(req.method==="POST") return await pick(req,res); res.writeHead(405,{Allow:"POST"}); return res.end(); }
     if(url.startsWith("/api/admin/")) return await adminApi(req,res,url,u.searchParams);
@@ -334,5 +445,6 @@ http.createServer(async (req,res)=>{
     warm(ROOT); }catch(e){}
   console.log("http://"+HOST+":"+PORT);
   setImmediate(initPublic);
+  setImmediate(initRent);
   console.log(ADMIN_ON ? "پنل مدیر: /admin.html" : "هشدار: ADMIN_PASSWORD (حداقل ۸ کاراکتر) تنظیم نشده؛ پنل مدیر غیرفعال است.");
 });

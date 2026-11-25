@@ -93,7 +93,8 @@ td.ltr{direction:ltr;text-align:right}
     <div class="tabs" role="tablist">
       <button class="tab" role="tab" data-t="sum" aria-selected="true">خلاصه</button>
       <button class="tab" role="tab" data-t="users" aria-selected="false">کاربران</button>
-      <button class="tab" role="tab" data-t="data" aria-selected="false">داده</button>
+      <button class="tab" role="tab" data-t="data" aria-selected="false">داده فروش</button>
+      <button class="tab" role="tab" data-t="rent" aria-selected="false">داده اجاره</button>
       <button class="tab" role="tab" data-t="picks" aria-selected="false">نقاط پرتقاضا</button>
     </div>
     <button class="btn" id="logout">خروج</button>
@@ -122,10 +123,27 @@ td.ltr{direction:ltr;text-align:right}
   <section class="panel" id="p-data">
     <div class="box glass"><h2>فایل فعلی</h2><div id="curData" class="m">در حال خواندن…</div></div>
     <div class="box glass">
-      <h2>بارگذاری فایل جدید</h2>
-      <p class="m">فایل xlsx را انتخاب کنید. قبل از جایگزینی، گزارش ردیف‌های قابل استفاده و کنار گذاشته‌شده نشان داده می‌شود. نسخه‌ی قبلی به‌عنوان پشتیبان نگه داشته می‌شود (۵ نسخه‌ی آخر).</p>
+      <h2>بارگذاری فایل فروش جدید</h2>
+      <p class="m">فایل xlsx آگهی‌های فروش را انتخاب کنید. قبل از جایگزینی، گزارش ردیف‌های قابل استفاده و کنار گذاشته‌شده نشان داده می‌شود. نسخه‌ی قبلی به‌عنوان پشتیبان نگه داشته می‌شود (۵ نسخه‌ی آخر).</p>
       <div class="bar" style="margin-top:12px"><label class="btn">انتخاب فایل xlsx<input type="file" id="up" accept=".xlsx" hidden></label><button class="btn primary" id="doUp" disabled>جایگزین کردن فایل فعلی</button></div>
       <div id="upReport"></div>
+    </div>
+  </section>
+
+  <!-- داده اجاره: جدا از داده فروش -->
+  <section class="panel" id="p-rent">
+    <div class="box glass"><h2>فایل اجاره‌ی فعلی</h2><div id="rCur" class="m">در حال خواندن…</div></div>
+    <div class="box glass">
+      <h2>نرخ تبدیل ودیعه به اجاره</h2>
+      <p class="m">اجاره‌ی معادل = اجاره‌ی ماهانه + (نرخ × ودیعه). با نرخ ۳٪ در ماه، هر ۱ میلیارد تومان ودیعه معادل ۳۰ میلیون تومان اجاره‌ی ماهانه است. با تغییر نرخ، مدل از روی همان داده دوباره ساخته می‌شود (برای ده‌ها هزار ردیف تا چند ده ثانیه).</p>
+      <div class="bar" style="margin-top:12px"><label for="rRate" style="font-size:13.5px;color:var(--ink-2)">نرخ ماهانه (٪)</label><input type="number" id="rRate" min="0.5" max="10" step="0.1" dir="ltr" style="width:110px;height:42px;padding:0 12px;font:inherit;font-size:15px;color:var(--ink);border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(0,0,0,.25)"><span id="rRateHint" class="m"></span><button class="btn primary" id="rSave">ذخیره و بازسازی مدل</button></div>
+      <div id="rRateMsg"></div>
+    </div>
+    <div class="box glass">
+      <h2>بارگذاری فایل اجاره‌ی جدید</h2>
+      <p class="m">همان خروجی خام اسکرپر دیوار را بدهید؛ پاک‌سازی خودکار است: ودیعه و اجاره از متن خوانده می‌شود («۱.۵۰۰ میلیارد / ۳ میلیون»، «رایگان»)، اجاره‌ی نمادین (زیر ۱ میلیون) رهن کامل حساب می‌شود، ویلا و مغازه و هتل و چندواحدی و ردیف‌های بدون مختصات یا متراژ و قیمت‌های دورافتاده کنار گذاشته می‌شود. پارامترهای مدل (از جمله تعداد همسایه‌ها) خودکار از روی داده تعیین می‌شود. این فایل با داده‌ی فروش کاملاً جداست.</p>
+      <div class="bar" style="margin-top:12px"><label class="btn">انتخاب فایل xlsx<input type="file" id="rUp" accept=".xlsx" hidden></label><button class="btn primary" id="rDoUp" disabled>جایگزین کردن فایل اجاره</button></div>
+      <div id="rUpReport"></div>
     </div>
   </section>
 
@@ -145,6 +163,7 @@ td.ltr{direction:ltr;text-align:right}
 <script src="vendor/leaflet.js"></script>
 <script src="vendor/xlsx.full.min.js"></script>
 <script src="listings-core.js"></script>
+<script src="rent-core.js"></script>
 <script src="config.js"></script>
 <script>
 (function(){
@@ -175,7 +194,7 @@ $("logout").onclick = async()=>{ await api("/api/admin/logout",{method:"POST",he
 document.querySelectorAll("[data-t]").forEach(b=>b.onclick=()=>{
   document.querySelectorAll("[data-t]").forEach(x=>x.setAttribute("aria-selected",x===b));
   document.querySelectorAll("section.panel").forEach(s=>s.classList.toggle("on",s.id==="p-"+b.dataset.t));
-  ({sum:loadSummary,users:loadUsers,data:loadDataTab,picks:loadPicks})[b.dataset.t]();
+  ({sum:loadSummary,users:loadUsers,data:loadDataTab,rent:loadRentTab,picks:loadPicks})[b.dataset.t]();
 });
 
 /* ----- خلاصه ----- */
@@ -277,6 +296,68 @@ $("doUp").onclick=async()=>{
   const out=$("upReport");
   if(r.ok){ out.append(h("div",{class:"msg good"},"فایل جدید جایگزین شد. کاربران از همین لحظه نسخه‌ی جدید را می‌گیرند.")); pending=null; $("up").value=""; loadDataTab(); }
   else { out.append(h("div",{class:"msg bad"},(j&&j.error)||"جایگزینی انجام نشد.")); $("doUp").disabled=false; }
+};
+
+/* ----- داده اجاره (جدا از فروش) ----- */
+const pctFa = (v,d=1) => fa(Math.round(v*100*10**d)/10**d,Math.round(v*100*10**d)%10**d?d:0)+"٪";
+const rateHint = p => "هر ۱ میلیارد ودیعه ≈ "+fa(Math.round(p*100)/10,Math.round(p*100)%10?1:0)+" میلیون تومان اجاره در ماه";
+function rentReport(st){
+  const box=h("div",{}); const cards=[[st.rows,"ردیف در فایل"],[st.ok,"قابل استفاده"],[st.rows-st.ok,"کنار گذاشته‌شده"],[st.noGeo,"بدون مختصات"],[st.noArea+st.areaRange,"بدون متراژ یا خارج از ۲۵ تا ۴۰۰ متر"],
+    [st.noPrice,"ودیعه یا اجاره ناقص"],[st.nonApt,"ویلا، مغازه، هتل و…"],[st.outside,"خارج از مشهد"],[st.dup,"تکراری"],[st.outlier,"قیمت دورافتاده"],[st.fullDeposit,"رهن کامل"],[st.mixed,"رهن و اجاره"],[st.placeholder,"اجاره‌ی نمادین (رهن کامل حساب شد)"]];
+  box.append(h("div",{class:"kv"},cards.map(([v,l])=>h("div",{},h("b",{},fa(v)),h("span",{},l)))));
+  return box;
+}
+function modelBox(sm){
+  if(!sm) return h("div",{class:"msg"},"مدل هنوز ساخته نشده است.");
+  const box=h("div",{});
+  box.append(h("div",{class:"kv"},
+    h("div",{},h("b",{},fa(sm.k)),h("span",{},"تعداد همسایه (خودکار)")),
+    h("div",{},h("b",{},pctFa(sm.cv.medAPE)),h("span",{},"میانه‌ی خطا (leave-one-out)")),
+    h("div",{},h("b",{},fa(sm.cv.n)),h("span",{},"ردیف در مدل")),
+    h("div",{},h("b",{},pctFa(sm.rate,1)),h("span",{},"نرخ ماهانه‌ی ودیعه")),
+    h("div",{},h("b",{},fa(sm.cv.q10*100,0)+"٪ تا "+fa(sm.cv.q90*100,0)+"٪"),h("span",{},"بازه‌ی ۸۰٪ خطای مدل (کل)"))));
+  box.append(h("p",{class:"m",style:"margin-top:10px"},"خطای میانه به ازای تعداد همسایه (k): "+sm.cv.table.map(t=>fa(t.k)+": "+pctFa(t.medAPE)).join("، ")));
+  box.append(h("p",{class:"m"},"اثر متراژ نسبت به ۹۰ تا ۱۱۰ متر (در اجاره‌ی هر متر): "+sm.area_bins.map(b=>fa(b.lo)+"–"+fa(b.hi)+" متر: "+(b.beta_log>=0?"+":"−")+fa(Math.abs(Math.exp(b.beta_log)-1)*100,0)+"٪").join("، ")));
+  if(sm.cv.n<200) box.append(h("div",{class:"msg"},"تعداد آگهی اجاره کم است و خطای برآورد بالاست. با بارگذاری داده‌ی بیشتر مدل خودکار دقیق‌تر می‌شود."));
+  return box;
+}
+let rPending=null;
+async function loadRentTab(){
+  const {j}=await api("/api/admin/rent-info"), box=$("rCur");
+  $("rRate").value=(j.rate*100).toFixed(1).replace(/\.0$/,""); $("rRateHint").textContent=rateHint(j.rate*100);
+  if(!j.exists){ box.textContent="هنوز فایل اجاره‌ای بارگذاری نشده است. تا آن زمان کلید «اجاره» در برنامه پیام «هنوز فعال نشده» می‌دهد."; return; }
+  box.replaceChildren(h("p",{class:"m"},"آخرین به‌روزرسانی: "+dt(j.mtime)+" — حجم: "+fa(j.size/1024,0)+" کیلوبایت — "+fa(j.backups.length)+" نسخه‌ی پشتیبان"+(j.preparing?" — در حال آماده‌سازی مدل…":"")));
+  if(j.summary){ box.append(rentReport(j.summary.stats), modelBox(j.summary)); }
+}
+$("rRate").oninput=()=>{ const v=Number($("rRate").value); $("rRateHint").textContent = v>0 ? rateHint(v) : ""; };
+$("rSave").onclick=async()=>{
+  const v=Number($("rRate").value), out=$("rRateMsg"); out.replaceChildren();
+  if(!(v>=0.5 && v<=10)){ out.append(h("div",{class:"msg bad"},"نرخ باید بین ۰٫۵ تا ۱۰ درصد در ماه باشد.")); return; }
+  $("rSave").disabled=true; $("rSave").textContent="در حال بازسازی مدل…";
+  const {r,j}=await api("/api/admin/rent-settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({percent:v})}).catch(()=>({r:{ok:false},j:null}));
+  $("rSave").disabled=false; $("rSave").textContent="ذخیره و بازسازی مدل";
+  if(r.ok){ out.append(h("div",{class:"msg good"},"نرخ "+fa(v,1)+"٪ ذخیره شد"+(j.summary?" و مدل دوباره ساخته شد. کاربران از همین لحظه نسخه‌ی جدید را می‌گیرند.":". هنوز فایل اجاره‌ای نیست؛ نرخ برای اولین بارگذاری استفاده می‌شود."))); loadRentTab(); }
+  else out.append(h("div",{class:"msg bad"},(j&&j.error)||"ذخیره انجام نشد."));
+};
+$("rUp").onchange=async e=>{
+  const f=e.target.files[0]; rPending=null; $("rDoUp").disabled=true; const out=$("rUpReport"); out.replaceChildren();
+  if(!f) return;
+  try{
+    const buf=await f.arrayBuffer(), rows=await RentCore.readRows(buf,f.name,XLSX), miss=RentCore.missingColumns(rows);
+    out.append(h("p",{class:"m",style:"margin-top:12px"},"پیش‌نمایش پاک‌سازی فایل «"+f.name+"» (دورافتاده‌ها و مدل بعد از بارگذاری روی سرور محاسبه می‌شود)"));
+    if(miss.length){ out.append(h("div",{class:"msg bad"},"ستون‌های لازم در فایل نیست: "+miss.join("، "))); return; }
+    const {stats}=RentCore.buildRent(rows,C); out.append(rentReport(stats));
+    if(!stats.ok){ out.append(h("div",{class:"msg bad"},"هیچ ردیف قابل استفاده‌ای در این فایل نیست. جایگزین نمی‌شود.")); return; }
+    if(stats.noGeo>stats.rows*0.5) out.append(h("div",{class:"msg"},"بیش از نیمی از ردیف‌ها مختصات ندارند و در مدل مکانی استفاده نمی‌شوند."));
+    rPending={f,buf}; $("rDoUp").disabled=false;
+  }catch(err){ out.append(h("div",{class:"msg bad"},"این فایل خوانده نشد: "+err.message)); }
+};
+$("rDoUp").onclick=async()=>{
+  if(!rPending) return; $("rDoUp").disabled=true; $("rDoUp").textContent="در حال ساخت مدل…";
+  const {r,j}=await api("/api/admin/rent",{method:"POST",headers:{"Content-Type":"application/octet-stream"},body:rPending.buf}).catch(()=>({r:{ok:false},j:null}));
+  $("rDoUp").textContent="جایگزین کردن فایل اجاره"; const out=$("rUpReport");
+  if(r.ok){ out.append(h("div",{class:"msg good"},"فایل اجاره جایگزین شد و مدل ساخته شد. کاربران از همین لحظه نسخه‌ی جدید را می‌گیرند."),modelBox(j.summary)); rPending=null; $("rUp").value=""; loadRentTab(); }
+  else { out.append(h("div",{class:"msg bad"},(j&&j.error)||"جایگزینی انجام نشد.")); $("rDoUp").disabled=false; }
 };
 
 /* ----- نقاط پرتقاضا ----- */

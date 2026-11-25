@@ -1,6 +1,6 @@
 // Service worker: فقط پوسته‌ی اپ کش می‌شود. فایل داده، API و تایل نقشه هرگز کش نمی‌شوند.
-const V = "arzesh-v8";
-const SHELL = ["./","index.html","config.js","listings-core.js","pricing.js","pricing-model.json","manifest.webmanifest","icons/icon-192.png","icons/icon-512.png",
+const V = "arzesh-v9";
+const SHELL = ["./","index.html","config.js","listings-core.js","pricing.js","rent-pricing.js","pricing-model.json","manifest.webmanifest","icons/icon-192.png","icons/icon-512.png",
   "vendor/leaflet.js","vendor/leaflet.css","vendor/xlsx.full.min.js","vendor/fonts/Vazirmatn.woff2"];
 self.addEventListener("install",e=>{ e.waitUntil(caches.open(V).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting())); });
 self.addEventListener("activate",e=>{ e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==V).map(k=>caches.delete(k)))).then(()=>self.clients.claim())); });
