@@ -129,6 +129,12 @@ body{overflow:hidden}
 .seg button:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
 .grab{width:44px;height:5px;border-radius:5px;background:rgba(255,255,255,.4);margin:8px auto 0;flex:none}
 .sheet.dragging{transition:none!important}
+.rent-only{display:none}
+.sheet[data-mode=rent] .rent-only{display:block}
+.sheet[data-mode=rent] .sale-only{display:none!important}
+.rent-line{font-size:14px;margin-top:8px;line-height:1.8;color:var(--ink)}
+.rent-line b{color:var(--teal);font-size:16px}
+.rent-line small{color:var(--ink-3);font-size:12px}
 .inst{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:12px;height:42px;border-radius:14px;border:1px solid rgba(230,184,92,.55);background:linear-gradient(160deg,rgba(243,207,134,.28),rgba(230,184,92,.12));color:#f6dd9f;font:inherit;font-size:14px;font-weight:700;cursor:pointer}
 .inst svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .inst:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
@@ -190,8 +196,8 @@ body{overflow:hidden}
 <div class="top">
   <div class="bar glass">
     <span class="me hidden" id="me" aria-hidden="true"></span>
-    <h1>قیمت هر متر مربع<small id="dataInfo">در حال خواندن داده…</small></h1>
-    <div class="seg" role="group" aria-label="نوع قیمت"><button type="button" id="modeSale" aria-pressed="true">فروش</button><button type="button" id="modeRent" aria-pressed="false" aria-disabled="true">اجاره</button></div>
+    <h1><span id="ttl">قیمت هر متر مربع</span><small id="dataInfo">در حال خواندن داده…</small></h1>
+    <div class="seg" role="group" aria-label="نوع قیمت"><button type="button" id="modeSale" aria-pressed="true">فروش</button><button type="button" id="modeRent" aria-pressed="false">اجاره</button></div>
   </div>
   <div class="chips glass" id="chips" role="group" aria-label="سال ساخت"></div>
 </div>
@@ -199,7 +205,7 @@ body{overflow:hidden}
 <button class="fab" id="locate" type="button" aria-label="موقعیت من"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg></button>
 
 <section class="sheet glass" id="sheet" aria-live="polite">
-  <div class="empty" id="hint"><b>یک نقطه روی نقشه انتخاب کنید</b><br>میانگین قیمت هر متر مربع نمونه‌های اطراف آن نقطه، برای سال ساخت انتخاب‌شده نشان داده می‌شود.
+  <div class="empty" id="hint"><b>یک نقطه روی نقشه انتخاب کنید</b><br><span id="hintTxt">میانگین قیمت هر متر مربع نمونه‌های اطراف آن نقطه، برای سال ساخت انتخاب‌شده نشان داده می‌شود.</span>
     <button class="inst hidden" id="install" type="button"><svg viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19h14"/></svg>نصب برنامه روی گوشی</button>
     <div class="ios hidden" id="iosHint">برای نصب در آیفون: دکمه‌ی اشتراک‌گذاری را بزنید و «Add to Home Screen» را انتخاب کنید.</div>
   </div>
@@ -207,11 +213,11 @@ body{overflow:hidden}
     <div class="grab" aria-hidden="true"></div>
     <div class="sheet-head">
       <div class="street"><button class="iconbtn back" id="back" type="button" aria-label="بازگشت"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button><svg viewBox="0 0 24 24"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.5"/></svg><span id="streetName">—</span></div>
-      <div class="price"><b id="avg">—</b><span>میلیون تومان برای هر متر مربع</span></div>
-      <div class="range" id="range"></div>
-      <div class="facts" id="facts"></div>
-      <div id="notes"></div>
-      <div class="est hidden" id="est">
+      <div class="price sale-only"><b id="avg">—</b><span>میلیون تومان برای هر متر مربع</span></div>
+      <div class="range sale-only" id="range"></div>
+      <div class="facts sale-only" id="facts"></div>
+      <div id="notes" class="sale-only"></div>
+      <div class="est hidden sale-only" id="est">
         <button class="est-toggle" id="estToggle" type="button" aria-expanded="false" aria-controls="estBody">تخمین قیمت ملک شما</button>
         <div class="hidden" id="estBody">
           <div class="est-grid">
@@ -227,9 +233,17 @@ body{overflow:hidden}
           <div class="est-out" id="estOut" aria-live="polite"></div>
         </div>
       </div>
+      <div class="rent-only" id="rentBox">
+        <div class="price"><b id="rAvg">—</b><span id="rAvgLbl">هزار تومان اجاره‌ی معادل ماهانه برای هر متر مربع</span></div>
+        <div class="est-grid" style="grid-template-columns:1fr 1fr">
+          <label class="ef"><span>متراژ (متر)</span><input id="rArea" inputmode="numeric" dir="ltr" autocomplete="off" placeholder="۱۰۰"></label>
+          <label class="ef"><span>ودیعه (میلیون تومان)</span><input id="rDep" inputmode="numeric" dir="ltr" autocomplete="off" placeholder="مثلاً ۱۰۰۰"></label>
+        </div>
+        <div class="est-out" id="rOut" aria-live="polite"></div>
+      </div>
     </div>
-    <button class="sheet-toggle" id="toggle" aria-expanded="false"></button>
-    <div class="list" id="list"></div>
+    <button class="sheet-toggle sale-only" id="toggle" aria-expanded="false"></button>
+    <div class="list sale-only" id="list"></div>
   </div>
 </section>
 
@@ -258,6 +272,7 @@ body{overflow:hidden}
 <script src="vendor/leaflet.js"></script>
 <script src="listings-core.js"></script>
 <script src="pricing.js"></script>
+<script src="rent-pricing.js"></script>
 <script src="config.js"></script>
 <script>
 (function(){
@@ -356,6 +371,7 @@ function renderChips(){
 function renderResult(){
   if(!point){ $("hint").classList.remove("hidden"); $("result").classList.add("hidden"); return; }
   $("hint").classList.add("hidden"); $("result").classList.remove("hidden");
+  if(priceMode==="rent") return renderRentResult();
   renderEst();
   const a = analyse(point.lat, point.lng);
   const yTxt = yearsTxt();
@@ -511,13 +527,75 @@ window.addEventListener("popstate", () => { histPushed=false; if(point) clearPoi
   };
   sheetEl.addEventListener("touchend",end); sheetEl.addEventListener("touchcancel",end);
 })();
-/* کلید فروش/اجاره: اجاره تا بارگذاری داده‌ی آگهی‌های اجاره (C.rent.enabled) غیرفعال است */
-let priceMode = "sale";
-$("modeSale").onclick = () => { priceMode="sale"; $("modeSale").setAttribute("aria-pressed","true"); $("modeRent").setAttribute("aria-pressed","false"); };
-$("modeRent").onclick = () => { if(!(C.rent && C.rent.enabled)) return toast("قیمت اجاره هنوز فعال نشده است؛ داده‌ی آگهی‌های اجاره (ودیعه و اجاره) بارگذاری نشده."); };
+/* کلید فروش/اجاره: داده‌ی اجاره جدا از فروش از /api/rent-data (فقط برای کاربر ثبت‌نام‌شده) گرفته و هنگام اولین کلیک بارگذاری می‌شود */
+let priceMode = "sale", rentData = null, rentLoading = null, rentBase = null, rentRaf = 0;
+function loadRent(){
+  if(rentData) return Promise.resolve(rentData);
+  if(rentLoading) return rentLoading;
+  const u = savedUser();
+  rentLoading = fetch(C.rentUrl,{cache:"no-store",headers:u&&u.token?{"x-user-token":u.token}:{}}).then(async r=>{
+    if(r.status===404) throw new Error("داده‌ی اجاره هنوز بارگذاری نشده است.");
+    if(r.status===503) throw new Error("داده‌ی اجاره در حال آماده‌سازی است؛ چند لحظه بعد دوباره امتحان کنید.");
+    if(r.status===401||r.status===403) throw new Error("دسترسی به داده‌ی اجاره ممکن نیست.");
+    if(!r.ok) throw new Error("دریافت داده‌ی اجاره انجام نشد.");
+    const j = await r.json();
+    if(!j || j.v!==1 || !j.model || !Array.isArray(j.list) || !window.RentPricing) throw new Error("قالب داده‌ی اجاره نامعتبر است.");
+    const list = j.list.map(x=>({lat:x.la,lng:x.lo,area:x.a,year:x.y,dep:x.d,rent:x.r}));
+    rentData = {model:j.model, prep:window.RentPricing.prepare(j.model,list), stats:j.stats, n:list.length};
+    return rentData;
+  }).finally(()=>{ rentLoading = null; });
+  return rentLoading;
+}
+function setMode(m){
+  priceMode = m; rentBase = null;
+  $("modeSale").setAttribute("aria-pressed", String(m==="sale")); $("modeRent").setAttribute("aria-pressed", String(m==="rent"));
+  $("sheet").dataset.mode = m; $("chips").classList.toggle("hidden", m==="rent");
+  $("ttl").textContent = m==="rent" ? "اجاره‌ی هر متر مربع" : "قیمت هر متر مربع";
+  $("hintTxt").textContent = m==="rent" ? "اجاره‌ی ماهانه‌ی معادل هر متر مربع در اطراف آن نقطه نشان داده می‌شود. متراژ و ودیعه را وارد کنید تا اجاره‌ی کل را ببینید." : "میانگین قیمت هر متر مربع نمونه‌های اطراف آن نقطه، برای سال ساخت انتخاب‌شده نشان داده می‌شود.";
+  selLayer.clearLayers(); renderResult(); requestAnimationFrame(setSheetH);
+}
+$("modeSale").onclick = () => { if(priceMode!=="sale") setMode("sale"); };
+$("modeRent").onclick = async () => {
+  if(priceMode==="rent") return;
+  $("modeRent").disabled = true;
+  try{ await loadRent(); setMode("rent"); }
+  catch(e){ toast(e.message||"داده‌ی اجاره در دسترس نیست."); }
+  finally{ $("modeRent").disabled = false; }
+};
+const rentNum = id => { const t = toLat($(id).value).replace(/[,٬،\s]/g,""); return t==="" ? null : Number(t); };
+const renderRentSoon = () => { if(rentRaf) return; rentRaf = requestAnimationFrame(()=>{ rentRaf=0; if(priceMode==="rent" && point) renderRentResult(); }); };
+function renderRentResult(){
+  const rd = rentData, out = $("rOut"), RP = window.RentPricing;
+  $("streetName").textContent = streetName || (useMapir ? "نام معبر در دسترس نیست" : "نام معبر با کلید map.ir نمایش داده می‌شود");
+  if(!rd || !point) return;
+  const areaIn = rentNum("rArea"), depIn = rentNum("rDep"), vr = rd.model.valid_area;
+  if(areaIn!=null && !(areaIn>=vr[0] && areaIn<=vr[1])){ out.innerHTML = '<div class="note bad">متراژ باید بین '+fa(vr[0])+' تا '+fa(vr[1])+' متر باشد (مدل فقط آپارتمان را پوشش می‌دهد).</div>'; $("rAvg").textContent="—"; return; }
+  if(depIn!=null && !(depIn>=0)){ out.innerHTML = '<div class="note bad">ودیعه معتبر نیست.</div>'; return; }
+  const key = point.lat+","+point.lng;
+  if(!rentBase || rentBase.key!==key || rentBase.rd!==rd) rentBase = {key, rd, s:RP.smoothAt(rd.model, rd.prep, point.lat, point.lng)};
+  const area = areaIn || 100, r = RP.estimate(rd.model, rd.prep, {lat:point.lat, lng:point.lng, area, deposit: depIn!=null ? depIn*1e6 : undefined}, rentBase.s);
+  selLayer.clearLayers();
+  if(r.error){ $("rAvg").textContent="—"; out.innerHTML = '<div class="note bad">در اطراف این نقطه آگهی اجاره‌ی کافی برای برآورد نیست.</div>'; return; }
+  L.circle([point.lat,point.lng],{radius:r.dmaxKm*1000,color:"#e6b85c",weight:1.5,dashArray:"5 6",fillColor:"#e6b85c",fillOpacity:.06,interactive:false}).addTo(selLayer);
+  L.circleMarker([point.lat,point.lng],{radius:8,color:"#0a1a21",weight:3,fillColor:"#e6b85c",fillOpacity:1,interactive:false}).addTo(selLayer);
+  $("rAvg").textContent = fa(r.perM2/1e3,0);
+  $("rAvgLbl").textContent = "هزار تومان اجاره‌ی معادل ماهانه برای هر متر مربع" + (areaIn ? "" : " (ملک ۱۰۰ متری)");
+  const tr = v => fa(Math.round(v*10)/10, Math.round(v*10)%10 ? 1 : 0), mm = v => tr(v/1e6), bil = v => fa(v/1e9,2), pr = Math.round(r.rate*1000)/10;
+  let h = '<div class="rent-line">اجاره‌ی معادل ماهانه (بدون ودیعه) برای '+fa(area)+' متر: <b>'+mm(r.total)+'</b> میلیون تومان <small>(بازه محتمل ۸۰٪: '+mm(r.low)+' تا '+mm(r.high)+')</small></div>';
+  h += '<div class="rent-line">رهن کامل معادل: <b>'+bil(r.fullDeposit)+'</b> میلیارد تومان <small>('+bil(r.fullDepositLow)+' تا '+bil(r.fullDepositHigh)+')</small></div>';
+  if(r.deposit!==undefined){
+    h += r.depositCoversAll ? '<div class="rent-line">ودیعه‌ی '+fa(depIn)+' میلیون تومان از رهن کامل معادل بیشتر است؛ اجاره‌ی ماهانه لازم نیست.</div>'
+      : '<div class="rent-line">با ودیعه‌ی '+fa(depIn)+' میلیون تومان، اجاره‌ی ماهانه حدود <b>'+mm(r.rent)+'</b> میلیون تومان <small>(بازه محتمل ۸۰٪: '+mm(r.rentLow)+' تا '+mm(r.rentHigh)+')</small></div>';
+  } else h += '<div class="note">ودیعه را وارد کنید تا اجاره‌ی ماهانه‌ی متناسب با آن را ببینید.</div>';
+  const warn = r.warnings.map(w=> w==="few_nearby" ? "آگهی‌های اجاره‌ی اطراف این نقطه کم است؛ دقت برآورد پایین است." : "").filter(Boolean);
+  if(warn.length) h += '<div class="note bad">'+warn.join(" ")+'</div>';
+  h += '<div class="note">نرخ تبدیل: هر ۱ میلیارد ودیعه ≈ '+tr(pr*10)+' میلیون تومان اجاره‌ی ماهانه ('+tr(pr)+'٪ در ماه). برآورد بر پایه‌ی '+fa(r.neighbours)+' آگهی اطراف (تا '+fa(r.dmaxKm,1)+' کیلومتر) و قیمت پیشنهادی آگهی‌هاست، نه قرارداد واقعی. میانه‌ی خطای مدل حدود '+fa(rd.model.cv.medAPE*100,0)+'٪ است.</div>';
+  out.innerHTML = h;
+}
+["rArea","rDep"].forEach(id=>$(id).addEventListener("input",renderRentSoon));
 async function pick(lat,lng){
   showSheet(); if(!histPushed){ try{ history.pushState({arz:1},""); histPushed=true; }catch(_){} }
-  point={lat,lng}; renderResult(); track(lat,lng);
+  point={lat,lng}; renderResult(); if(priceMode==="sale") track(lat,lng);
   await reverse(lat,lng);
   if(point && point.lat===lat && point.lng===lng) renderResult();
 }
@@ -647,7 +725,7 @@ window.addEventListener("appinstalled",()=>$("install").classList.add("hidden"))
 })();
 if("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register("sw.js").catch(()=>{});
 
-window.__app = {analyse, setYear:(y,t)=>{years.clear(); if(y!=null) (Array.isArray(y)?y:[y]).forEach(v=>years.add(v)); tol=!!t; refresh();}, pick};
+window.__app = {setMode, loadRent, analyse, setYear:(y,t)=>{years.clear(); if(y!=null) (Array.isArray(y)?y:[y]).forEach(v=>years.add(v)); tol=!!t; refresh();}, pick};
 })();
 </script>
 </body>
