@@ -53,9 +53,23 @@ const COLS = {
   page:["ردیف‌های صفحه (عنوان: مقدار)","ردیف های صفحه (عنوان: مقدار)"],
   depTxt:["ودیعه (متن)"], rentTxt:["اجاره ماهانه (متن)","اجاره‌ی ماهانه (متن)"],
   depNum:["ودیعه (تومان)"], rentNum:["اجاره ماهانه (تومان)","اجاره‌ی ماهانه (تومان)"],
-  lat:["latitude","lat"], lng:["longitude","lng","lon"], area:["متراژ"], year:["سال ساخت","ساخت"]
+  amen:["امکانات (مودال)","امکانات"], lat:["latitude","lat"], lng:["longitude","lng","lon"], area:["متراژ"], year:["سال ساخت","ساخت"]
 };
 const REQUIRED = [["ودیعه",["depTxt","depNum"]],["اجاره",["rentTxt","rentNum"]],["latitude",["lat"]],["longitude",["lng"]],["متراژ (ردیف‌های صفحه)",["page","area"]]];
+
+/** امکانات («آسانسور | پارکینگ ندارد | …») → {e, p}: ۱ دارد، ۰ ندارد، undefined نامشخص */
+function amenities(t){
+  const items = norm(t).split("|").map(x=>x.trim()), o = {};
+  for(const [k,name] of [["e","آسانسور"],["p","پارکینگ"]]){
+    if(items.includes(name+" ندارد")) o[k] = 0; else if(items.includes(name)) o[k] = 1;
+  }
+  return o;
+}
+/** شناسه‌ی آگهی: ستون شناسه، وگرنه آخرین بخش URL */
+function idOf(r, get){
+  const rawId = get(r,"id"), url = get(r,"url");
+  return !empty(rawId) ? String(rawId) : (!empty(url) ? String(url).split("/").pop() : null);
+}
 
 function makeGetter(rows){
   const keys = {}; if(rows.length) for(const k of Object.keys(rows[0])) keys[norm(k).toLowerCase()] = k;
@@ -72,8 +86,7 @@ function buildRent(rows, C){
   const {get} = makeGetter(rows), B = C.bounds, out = [];
   const seenId = new Set(), seenContent = new Set();
   for(const r of rows){
-    const rawId = get(r,"id"), url = get(r,"url");
-    const id = !empty(rawId) ? String(rawId) : (!empty(url) ? String(url).split("/").pop() : null);
+    const id = idOf(r, get);
     if(id){ if(seenId.has(id)){ st.dup++; continue; } seenId.add(id); }
     const lat = Number(get(r,"lat")), lng = Number(get(r,"lng"));
     if(empty(get(r,"lat")) || empty(get(r,"lng")) || !isFinite(lat) || !isFinite(lng)){ st.noGeo++; continue; }
@@ -97,10 +110,43 @@ function buildRent(rows, C){
     const ck = title+"|"+dep+"|"+rent+"|"+area;
     if(seenContent.has(ck)){ st.dup++; continue; } seenContent.add(ck);
     if(rent===0) st.fullDeposit++; else st.mixed++;
-    out.push({id, area, year, dep, rent, lat, lng});
+    const am = empty(get(r,"amen")) ? {} : amenities(get(r,"amen"));
+    const item = {id, area, year, dep, rent, lat, lng};
+    if(am.e!==undefined) item.e = am.e;
+    if(am.p!==undefined) item.p = am.p;
+    out.push(item);
   }
   st.ok = out.length;
   return {list:out, stats:st};
+}
+
+/** ادغام بدون تکرار: ردیف‌های فایل جدید که شناسه‌شان (یا توکن لینک) در داده‌ی فعلی یا در خود فایل جدید قبلاً آمده اضافه نمی‌شود.
+ *  idFor(rows) تابع «ردیف → شناسه یا null» را برای همان مجموعه می‌سازد (نام ستون‌ها در دو فایل می‌تواند فرق کند). ردیف بدون شناسه همیشه جدید است
+ *  (تکراری بودن محتوایی‌اش بعداً در پاک‌سازی گرفته می‌شود). ردیف‌های فعلی هرگز تغییر یا حذف نمی‌شوند. */
+function mergeRows(oldRows, newRows, idFor){
+  const oid = idFor(oldRows), nid = idFor(newRows), seen = new Set(), oldIds = new Set();
+  for(const r of oldRows){ const i = oid(r); if(i!=null){ seen.add(i); oldIds.add(i); } }
+  const headers = oldRows.length ? Object.keys(oldRows[0]) : [], hmap = {};
+  headers.forEach(h=>{ hmap[norm(h).toLowerCase()] = h; });
+  const rep = {fileRows:newRows.length, existing:oldRows.length, dupExisting:0, inFileDup:0, added:0, total:0};
+  const added = [];
+  for(const r of newRows){
+    const i = nid(r);
+    if(i!=null){
+      if(oldIds.has(i)){ rep.dupExisting++; continue; }
+      if(seen.has(i)){ rep.inFileDup++; continue; }
+      seen.add(i);
+    }
+    const o = {};                                          // نام ستون‌های فایل جدید به نام ستون‌های فایل فعلی نگاشت می‌شود
+    for(const k of Object.keys(r)){
+      const nk = norm(k).toLowerCase(); let t = hmap[nk];
+      if(t===undefined){ t = k; hmap[nk] = k; headers.push(k); }
+      o[t] = r[k];
+    }
+    added.push(o);
+  }
+  rep.added = added.length; rep.total = oldRows.length + added.length;
+  return {rows:oldRows.concat(added), headers, report:rep};
 }
 
 async function readRows(buf, name, XLSX){
@@ -109,5 +155,5 @@ async function readRows(buf, name, XLSX){
   return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:null,raw:true});
 }
 
-return {buildRent, readRows, missingColumns, money, depRent, norm, AREA_RANGE, PLACEHOLDER_RENT};
+return {buildRent, mergeRows, idOf, makeGetter, amenities, readRows, missingColumns, money, depRent, norm, AREA_RANGE, PLACEHOLDER_RENT};
 });

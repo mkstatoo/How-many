@@ -142,7 +142,8 @@ td.ltr{direction:ltr;text-align:right}
     <div class="box glass">
       <h2>بارگذاری فایل اجاره‌ی جدید</h2>
       <p class="m">همان خروجی خام اسکرپر دیوار را بدهید؛ پاک‌سازی خودکار است: ودیعه و اجاره از متن خوانده می‌شود («۱.۵۰۰ میلیارد / ۳ میلیون»، «رایگان»)، اجاره‌ی نمادین (زیر ۱ میلیون) رهن کامل حساب می‌شود، ویلا و مغازه و هتل و چندواحدی و ردیف‌های بدون مختصات یا متراژ و قیمت‌های دورافتاده کنار گذاشته می‌شود. پارامترهای مدل (از جمله تعداد همسایه‌ها) خودکار از روی داده تعیین می‌شود. این فایل با داده‌ی فروش کاملاً جداست.</p>
-      <div class="bar" style="margin-top:12px"><label class="btn">انتخاب فایل xlsx<input type="file" id="rUp" accept=".xlsx" hidden></label><button class="btn primary" id="rDoUp" disabled>جایگزین کردن فایل اجاره</button></div>
+      <div class="m" style="margin-top:12px"><label style="margin-inline-end:16px"><input type="radio" name="rMode" value="merge" checked> افزودن موارد جدید (تکراری‌ها اضافه نمی‌شوند)</label><label><input type="radio" name="rMode" value="replace"> جایگزینی کامل داده</label></div>
+      <div class="bar" style="margin-top:12px"><label class="btn">انتخاب فایل xlsx<input type="file" id="rUp" accept=".xlsx" hidden></label><button class="btn primary" id="rDoUp" disabled>افزودن موارد جدید به داده</button></div>
       <div id="rUpReport"></div>
     </div>
   </section>
@@ -339,25 +340,41 @@ $("rSave").onclick=async()=>{
   if(r.ok){ out.append(h("div",{class:"msg good"},"نرخ "+fa(v,1)+"٪ ذخیره شد"+(j.summary?" و مدل دوباره ساخته شد. کاربران از همین لحظه نسخه‌ی جدید را می‌گیرند.":". هنوز فایل اجاره‌ای نیست؛ نرخ برای اولین بارگذاری استفاده می‌شود."))); loadRentTab(); }
   else out.append(h("div",{class:"msg bad"},(j&&j.error)||"ذخیره انجام نشد."));
 };
+const rMode = () => (document.querySelector('input[name="rMode"]:checked')||{}).value || "merge";
+function mergeReport(rep){
+  const rows=[["ردیف‌های فایل",rep.fileRows],["ردیف‌های فعلی داده",rep.existing],["تکراری (قبلاً در داده)",rep.dupExisting],["تکراری داخل خود فایل",rep.inFileDup],["ردیف جدید اضافه‌شده",rep.added],["مجموع ردیف بعد از ادغام",rep.total],["قابل استفاده در مدل: قبل",rep.usableBefore],["قابل استفاده در مدل: بعد",rep.usableAfter]];
+  return h("div",{class:"m",style:"margin-top:10px;line-height:1.9"},...rows.map(([k,v])=>h("div",{},k+": ",h("b",{},fa(v)))));
+}
+async function rentPreview(){
+  const out=$("rUpReport"); out.replaceChildren(); $("rDoUp").disabled=true; if(!rPending) return;
+  const mode=rMode(); $("rDoUp").textContent = mode==="merge" ? "افزودن موارد جدید به داده" : "جایگزین کردن فایل اجاره";
+  out.append(h("p",{class:"m",style:"margin-top:12px"},"در حال بررسی تکراری‌ها…"));
+  const {r,j}=await api("/api/admin/rent?dry=1&mode="+mode,{method:"POST",headers:{"Content-Type":"application/octet-stream"},body:rPending.buf}).catch(()=>({r:{ok:false},j:null}));
+  out.replaceChildren(); if(!rPending) return;
+  if(!r.ok){ out.append(h("div",{class:"msg bad"},(j&&j.error)||"بررسی فایل انجام نشد.")); return; }
+  const rep=j.report;
+  out.append(h("p",{class:"m",style:"margin-top:12px"},"پیش‌نمایش فایل «"+rPending.f.name+"»؛ هنوز چیزی ثبت نشده است."), mergeReport(rep), h("p",{class:"m",style:"margin-top:10px"},"پاک‌سازی فایل جدید به‌تنهایی:"), rentReport(rep.fileStats));
+  if(mode==="merge" && rep.added===0){ out.append(h("div",{class:"msg"},"همه‌ی ردیف‌های این فایل قبلاً در داده هست؛ چیزی اضافه نمی‌شود.")); return; }
+  if(!rep.usableAfter){ out.append(h("div",{class:"msg bad"},"هیچ ردیف قابل استفاده‌ای نیست.")); return; }
+  if(mode==="merge") out.append(h("div",{class:"msg good"},fa(rep.added)+" ردیف جدید اضافه می‌شود ("+fa(rep.addedUsable)+" مورد قابل استفاده در مدل)."));
+  else out.append(h("div",{class:"msg"},"حالت جایگزینی: داده‌ی فعلی کاملاً با این فایل عوض می‌شود (نسخه‌ی قبل در پشتیبان می‌ماند)."));
+  $("rDoUp").disabled=false;
+}
 $("rUp").onchange=async e=>{
-  const f=e.target.files[0]; rPending=null; $("rDoUp").disabled=true; const out=$("rUpReport"); out.replaceChildren();
+  const f=e.target.files[0]; rPending=null; $("rDoUp").disabled=true; $("rUpReport").replaceChildren();
   if(!f) return;
-  try{
-    const buf=await f.arrayBuffer(), rows=await RentCore.readRows(buf,f.name,XLSX), miss=RentCore.missingColumns(rows);
-    out.append(h("p",{class:"m",style:"margin-top:12px"},"پیش‌نمایش پاک‌سازی فایل «"+f.name+"» (دورافتاده‌ها و مدل بعد از بارگذاری روی سرور محاسبه می‌شود)"));
-    if(miss.length){ out.append(h("div",{class:"msg bad"},"ستون‌های لازم در فایل نیست: "+miss.join("، "))); return; }
-    const {stats}=RentCore.buildRent(rows,C); out.append(rentReport(stats));
-    if(!stats.ok){ out.append(h("div",{class:"msg bad"},"هیچ ردیف قابل استفاده‌ای در این فایل نیست. جایگزین نمی‌شود.")); return; }
-    if(stats.noGeo>stats.rows*0.5) out.append(h("div",{class:"msg"},"بیش از نیمی از ردیف‌ها مختصات ندارند و در مدل مکانی استفاده نمی‌شوند."));
-    rPending={f,buf}; $("rDoUp").disabled=false;
-  }catch(err){ out.append(h("div",{class:"msg bad"},"این فایل خوانده نشد: "+err.message)); }
+  try{ const buf=await f.arrayBuffer(); rPending={f,buf}; await rentPreview(); }
+  catch(err){ rPending=null; $("rUpReport").append(h("div",{class:"msg bad"},"این فایل خوانده نشد: "+err.message)); }
 };
+document.querySelectorAll('input[name="rMode"]').forEach(x=>x.addEventListener("change",rentPreview));
 $("rDoUp").onclick=async()=>{
-  if(!rPending) return; $("rDoUp").disabled=true; $("rDoUp").textContent="در حال ساخت مدل…";
-  const {r,j}=await api("/api/admin/rent",{method:"POST",headers:{"Content-Type":"application/octet-stream"},body:rPending.buf}).catch(()=>({r:{ok:false},j:null}));
-  $("rDoUp").textContent="جایگزین کردن فایل اجاره"; const out=$("rUpReport");
-  if(r.ok){ out.append(h("div",{class:"msg good"},"فایل اجاره جایگزین شد و مدل ساخته شد. کاربران از همین لحظه نسخه‌ی جدید را می‌گیرند."),modelBox(j.summary)); rPending=null; $("rUp").value=""; loadRentTab(); }
-  else { out.append(h("div",{class:"msg bad"},(j&&j.error)||"جایگزینی انجام نشد.")); $("rDoUp").disabled=false; }
+  if(!rPending) return; const mode=rMode(); $("rDoUp").disabled=true; $("rDoUp").textContent="در حال ساخت مدل…";
+  const {r,j}=await api("/api/admin/rent?mode="+mode,{method:"POST",headers:{"Content-Type":"application/octet-stream"},body:rPending.buf}).catch(()=>({r:{ok:false},j:null}));
+  const out=$("rUpReport"); out.replaceChildren(); $("rDoUp").textContent = mode==="merge" ? "افزودن موارد جدید به داده" : "جایگزین کردن فایل اجاره";
+  if(r.ok){
+    out.append(h("div",{class:"msg good"}, j.nothingNew ? "چیز جدیدی نبود؛ داده و مدل بدون تغییر ماند." : (mode==="merge" ? fa(j.report.added)+" ردیف جدید به داده اضافه شد و مدل دوباره ساخته شد." : "فایل اجاره جایگزین شد و مدل ساخته شد.")+" کاربران از همین لحظه نسخه‌ی جدید را می‌گیرند."), mergeReport(j.report));
+    if(j.summary) out.append(modelBox(j.summary)); rPending=null; $("rUp").value=""; loadRentTab();
+  } else { out.append(h("div",{class:"msg bad"},(j&&j.error)||"ثبت انجام نشد.")); $("rDoUp").disabled=false; }
 };
 
 /* ----- نقاط پرتقاضا ----- */

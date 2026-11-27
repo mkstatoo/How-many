@@ -54,6 +54,31 @@ if(fs.existsSync(file)){
   console.log("  اثر متراژ در یک نقطه: ۶۰ متر",Math.round(A1),"| ۱۸۰ متر",Math.round(A2));
 }
 
+console.log("ادغام بدون تکرار و ویژگی‌های اختیاری");
+{ const idFor = rows => { const {get} = Core.makeGetter(rows); return r => Core.idOf(r,get); };
+  const mk = (id,dep,rent,lat) => ({"شناسه":id,"عنوان":"آپارتمان "+id,"ردیف‌های صفحه (عنوان: مقدار)":"متراژ: ۹۰ / ۱۳۹۸","ودیعه (متن)":dep,"اجاره ماهانه (متن)":rent,"امکانات (مودال)":"آسانسور ندارد | پارکینگ",latitude:lat,longitude:59.6});
+  const old = [mk("a1","۵۰۰ میلیون","۱۰ میلیون",36.3), mk("a2","۳۰۰ میلیون","۸ میلیون",36.31)];
+  const inc = [mk("a2","۳۰۰ میلیون","۸ میلیون",36.31), mk("b1","۴۰۰ میلیون","۹ میلیون",36.32), mk("b1","۴۰۰ میلیون","۹ میلیون",36.32), {...mk("b2","۱ میلیارد","۵ میلیون",36.33), "ستون تازه":"x"}];
+  const m = Core.mergeRows(old, inc, idFor), r = m.report;
+  ok(r.added===2 && r.dupExisting===1 && r.inFileDup===1 && r.total===4, "ادغام: ۲ جدید، ۱ تکراری قبلی، ۱ تکراری داخل فایل "+JSON.stringify(r));
+  ok(m.rows[0]===old[0] && m.rows.length===4, "ردیف‌های فعلی دست‌نخورده می‌مانند");
+  ok(m.headers.includes("ستون تازه"), "ستون تازه به سرستون‌ها اضافه شد");
+  const again = Core.mergeRows(m.rows, inc, idFor).report; ok(again.added===0, "ادغام دوباره‌ی همان فایل چیزی اضافه نمی‌کند");
+  // نام ستون با ی/ک یا نیم‌فاصله متفاوت به ستون فعلی نگاشت می‌شود
+  const alt = Core.mergeRows(old, [{"شناسه":"c1","عنوان":"x","ردیف های صفحه (عنوان: مقدار)":"متراژ: ۸۰ / ۱۴۰۰"}], idFor);
+  ok(Object.keys(alt.rows[2]).includes("ردیف‌های صفحه (عنوان: مقدار)") && !alt.headers.includes("ردیف های صفحه (عنوان: مقدار)"), "ستون با فاصله/نیم‌فاصله‌ی متفاوت نگاشت شد");
+  const b = Core.buildRent(old, C); ok(b.list[0].e===0 && b.list[0].p===1, "آسانسور ندارد ⇒ e=0 ، پارکینگ ⇒ p=1");
+  // رفت‌وبرگشت xlsx
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(m.rows,{header:m.headers}), "S");
+  const back = XLSX.utils.sheet_to_json(XLSX.read(XLSX.write(wb,{type:"buffer",bookType:"xlsx"}),{type:"buffer"}).Sheets.S,{defval:null,raw:true});
+  ok(back.length===4 && back[3]["شناسه"]==="b2" && back[0].latitude===36.3, "ذخیره و خواندن دوباره‌ی xlsx ادغام‌شده سالم است");
+}
+{ const f = P.featAdj({feat:{names:[],year_ref:1405,mu:[0.5,0.3,0.2],g:[-0.2,-0.2,-0.2]}}, {});
+  ok(f===0, "ویژگی نامشخص اثری ندارد");
+  const m = {feat:{names:[],year_ref:1405,mu:[0.5,0.3,0.2],g:[-0.2,-0.2,-0.2]}};
+  ok(P.featAdj(m,{year:1385})<P.featAdj(m,{year:1403}), "ساختمان قدیمی‌تر ارزان‌تر");
+  ok(P.featAdj(m,{e:0})<P.featAdj(m,{e:1}), "بدون آسانسور ارزان‌تر"); }
+
 console.log("داده‌ی مصنوعی ۱۰ هزار ردیف (زمان و پایداری)");
 { let s=777; const rnd=()=>(s=(s*1664525+1013904223)>>>0)/4294967296, g=()=>{ let u=0; for(let i=0;i<6;i++) u+=rnd(); return (u-3)/Math.sqrt(.5); };
   const f = {2:0,3:0}; const list=[];

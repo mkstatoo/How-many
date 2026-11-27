@@ -238,6 +238,9 @@ body{overflow:hidden}
         <div class="est-grid" style="grid-template-columns:1fr 1fr">
           <label class="ef"><span>متراژ (متر)</span><input id="rArea" inputmode="numeric" dir="ltr" autocomplete="off" placeholder="۱۰۰"></label>
           <label class="ef"><span>ودیعه (میلیون تومان)</span><input id="rDep" inputmode="numeric" dir="ltr" autocomplete="off" placeholder="مثلاً ۱۰۰۰"></label>
+          <label class="ef"><span>سال ساخت (اختیاری)</span><input id="rYear" inputmode="numeric" dir="ltr" autocomplete="off" placeholder="مثلاً ۱۳۹۸"></label>
+          <label class="ef"><span>آسانسور</span><select id="rElev"><option value="">نامشخص</option><option value="1">دارد</option><option value="0">ندارد</option></select></label>
+          <label class="ef"><span>پارکینگ</span><select id="rPark"><option value="">نامشخص</option><option value="1">دارد</option><option value="0">ندارد</option></select></label>
         </div>
         <div class="est-out" id="rOut" aria-live="polite"></div>
       </div>
@@ -539,8 +542,8 @@ function loadRent(){
     if(r.status===401||r.status===403) throw new Error("دسترسی به داده‌ی اجاره ممکن نیست.");
     if(!r.ok) throw new Error("دریافت داده‌ی اجاره انجام نشد.");
     const j = await r.json();
-    if(!j || j.v!==1 || !j.model || !Array.isArray(j.list) || !window.RentPricing) throw new Error("قالب داده‌ی اجاره نامعتبر است.");
-    const list = j.list.map(x=>({lat:x.la,lng:x.lo,area:x.a,year:x.y,dep:x.d,rent:x.r}));
+    if(!j || j.v!==2 || !j.model || !Array.isArray(j.list) || !window.RentPricing) throw new Error("قالب داده‌ی اجاره نامعتبر است.");
+    const list = j.list.map(x=>({lat:x.la,lng:x.lo,area:x.a,year:x.y,dep:x.d,rent:x.r,e:x.e,p:x.p}));
     rentData = {model:j.model, prep:window.RentPricing.prepare(j.model,list), stats:j.stats, n:list.length};
     return rentData;
   }).finally(()=>{ rentLoading = null; });
@@ -573,7 +576,7 @@ function renderRentResult(){
   if(depIn!=null && !(depIn>=0)){ out.innerHTML = '<div class="note bad">ودیعه معتبر نیست.</div>'; return; }
   const key = point.lat+","+point.lng;
   if(!rentBase || rentBase.key!==key || rentBase.rd!==rd) rentBase = {key, rd, s:RP.smoothAt(rd.model, rd.prep, point.lat, point.lng)};
-  const area = areaIn || 100, r = RP.estimate(rd.model, rd.prep, {lat:point.lat, lng:point.lng, area, deposit: depIn!=null ? depIn*1e6 : undefined}, rentBase.s);
+  const area = areaIn || 100, r = RP.estimate(rd.model, rd.prep, {lat:point.lat, lng:point.lng, area, deposit: depIn!=null ? depIn*1e6 : undefined, year:rentNum("rYear")||undefined, elevator:$("rElev").value===""?undefined:$("rElev").value==="1", parking:$("rPark").value===""?undefined:$("rPark").value==="1"}, rentBase.s);
   selLayer.clearLayers();
   if(r.error){ $("rAvg").textContent="—"; out.innerHTML = '<div class="note bad">در اطراف این نقطه آگهی اجاره‌ی کافی برای برآورد نیست.</div>'; return; }
   L.circle([point.lat,point.lng],{radius:r.dmaxKm*1000,color:"#e6b85c",weight:1.5,dashArray:"5 6",fillColor:"#e6b85c",fillOpacity:.06,interactive:false}).addTo(selLayer);
@@ -592,7 +595,8 @@ function renderRentResult(){
   h += '<div class="note">نرخ تبدیل: هر ۱ میلیارد ودیعه ≈ '+tr(pr*10)+' میلیون تومان اجاره‌ی ماهانه ('+tr(pr)+'٪ در ماه). برآورد بر پایه‌ی '+fa(r.neighbours)+' آگهی اطراف (تا '+fa(r.dmaxKm,1)+' کیلومتر) و قیمت پیشنهادی آگهی‌هاست، نه قرارداد واقعی. میانه‌ی خطای مدل حدود '+fa(rd.model.cv.medAPE*100,0)+'٪ است.</div>';
   out.innerHTML = h;
 }
-["rArea","rDep"].forEach(id=>$(id).addEventListener("input",renderRentSoon));
+["rArea","rDep","rYear"].forEach(id=>$(id).addEventListener("input",renderRentSoon));
+["rElev","rPark"].forEach(id=>$(id).addEventListener("change",renderRentSoon));
 async function pick(lat,lng){
   showSheet(); if(!histPushed){ try{ history.pushState({arz:1},""); histPushed=true; }catch(_){} }
   point={lat,lng}; renderResult(); if(priceMode==="sale") track(lat,lng);

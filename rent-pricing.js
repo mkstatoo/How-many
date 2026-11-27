@@ -21,6 +21,19 @@ function binOf(area){ for(let b=0;b<AREA_EDGES.length-1;b++) if(area<=AREA_EDGES
 function toXY(proj, lat, lng){ return [(lng-proj.lng0)*111.32*Math.cos(proj.lat0*Math.PI/180), (lat-proj.lat0)*110.57]; }
 const eqRent = (l, rate) => l.rent + rate*l.dep;
 
+/* ---------- ویژگی‌های اختیاری (از آزمون اعتبارسنجی متقابل روی داده‌ی واقعی: سن بنا، بدون آسانسور، بدون پارکینگ) ----------
+   نامشخص = ۰ بعد از مرکزی‌سازی، یعنی اثری ندارد. سن: به‌ازای ۱۰ سال (۰ تا ۴۰ سال). */
+const NF = 3, FEAT_NAMES = ["age10","no_elevator","no_parking"], AGE_CAP = 40;
+function persianYear(d){ d = d||new Date(); const g = d.getUTCFullYear(), m = d.getUTCMonth(), day = d.getUTCDate(); return g - 621 - ((m<2 || (m===2 && day<21)) ? 1 : 0); }
+/** مقدار خام ویژگی‌ها؛ NaN = نامشخص. l.e و l.p: ۱ دارد، ۰ ندارد */
+function featRaw(l, yr){
+  const y = l.year!=null ? l.year : l.y;
+  return [ y>=1300 && y<=yr+1 ? Math.min(Math.max(yr-y,0),AGE_CAP)/10 : NaN,
+           l.e===0 ? 1 : l.e===1 ? 0 : NaN,
+           l.p===0 ? 1 : l.p===1 ? 0 : NaN ];
+}
+const featCentered = (raw, mu) => raw.map((v,j)=> isNaN(v) ? 0 : v-mu[j]);
+
 /* ---------- شاخص شبکه‌ای برای k نزدیک‌ترین همسایه (دقیق، بدون مرتب‌کردن کل داده) ---------- */
 function makeIndex(xs, ys){
   const n = xs.length; let x0=Infinity, y0=Infinity, x1=-Infinity, y1=-Infinity;
@@ -74,18 +87,19 @@ function solve(A, b){                                        // حذف گاوس�
   for(let r=n-1;r>=0;r--){ let s=M[r][n]; for(let j=r+1;j<n;j++) s-=M[r][j]*x[j]; x[r]=s/(M[r][r]||1e-12); }
   return x;
 }
-function fitAreaBeta(res, bins, valid){                      // res = y − S ؛ بازگشت: beta هر گروه (مرجع = ۰)
+function fitTerms(res, bins, valid, X){                      // res = y − S ؛ بازگشت: beta هر گروه متراژ (مرجع = ۰) و ضرایب ویژگی‌ها g
   const B = AREA_EDGES.length-1, cols = []; for(let b=0;b<B;b++) if(b!==REF_BIN) cols.push(b);
-  const m = cols.length+1, A = Array.from({length:m},()=>new Float64Array(m)), rhs = new Float64Array(m);
+  const m = cols.length+1+NF, A = Array.from({length:m},()=>new Float64Array(m)), rhs = new Float64Array(m);
   for(let i=0;i<res.length;i++){
     if(!valid[i]) continue;
     const row = new Float64Array(m); row[0]=1; const ci = cols.indexOf(bins[i]); if(ci>=0) row[ci+1]=1;
+    for(let j=0;j<NF;j++) row[cols.length+1+j] = X[i*NF+j];
     for(let a=0;a<m;a++){ if(!row[a]) continue; rhs[a]+=row[a]*res[i]; for(let c=0;c<m;c++) if(row[c]) A[a][c]+=row[a]*row[c]; }
   }
   for(let a=1;a<m;a++) A[a][a]+=RIDGE;
   const x = solve(A.map(r=>Array.from(r)), Array.from(rhs)), beta = new Array(B).fill(0);
   cols.forEach((b,j)=>beta[b]=x[j+1]);
-  return beta;
+  return {beta, g:x.slice(cols.length+1)};
 }
 
 /** آماده‌سازی: حذف دورافتاده‌ها، تبدیل به y = ln(Req/متراژ) */
@@ -107,9 +121,13 @@ function fit(list, rate, opts){
   const xs = new Float64Array(n), ys = new Float64Array(n), y = new Float64Array(n), bin = new Int32Array(n);
   kept.forEach((r,i)=>{ const p = toXY(proj,r.l.lat,r.l.lng); xs[i]=p[0]; ys[i]=p[1]; y[i]=r.y; bin[i]=binOf(r.l.area); });
   const ix = makeIndex(xs,ys);
+  const yr = persianYear(), raw = kept.map(r=>featRaw(r.l,yr)), mu = [0,1,2].map(j=>{ const v = raw.map(r=>r[j]).filter(x=>!isNaN(x)); return v.length ? v.reduce((s,x)=>s+x,0)/v.length : 0; });
+  const X = new Float64Array(n*NF); raw.forEach((r,i)=>{ const c = featCentered(r,mu); for(let j=0;j<NF;j++) X[i*NF+j]=c[j]; });
+  const nKnown = [0,1,2].map(j=>raw.filter(r=>!isNaN(r[j])).length);
+  const gx = i => { let s=0; for(let j=0;j<NF;j++) s+=g[j]*X[i*NF+j]; return s; };
   const ks = K_GRID.filter(k=>k<=Math.floor(n*0.6) && k>=8); if(!ks.length) ks.push(Math.max(3, Math.floor(n/2)));
   const B = AREA_EDGES.length-1;
-  let f = new Array(B).fill(0);
+  let f = new Array(B).fill(0), g = new Array(NF).fill(0);
 
   // همسایه‌های leave-one-out برای هر k یک‌بار حساب می‌شوند؛ تکرارهای backfitting فقط جمع وزن‌دار می‌گیرند
   function neighbours(k){
@@ -120,34 +138,35 @@ function fit(list, rate, opts){
   function backfit(NB, iters){
     const z = new Float64Array(n), S = new Float64Array(n), valid = new Uint8Array(n), res = new Float64Array(n);
     for(let it=0; it<iters; it++){
-      for(let i=0;i<n;i++) z[i] = y[i]-f[bin[i]];
+      for(let i=0;i<n;i++) z[i] = y[i]-f[bin[i]]-gx(i);
       for(let i=0;i<n;i++){ const nb = NB[i]; if(!nb){ S[i]=NaN; valid[i]=0; continue; }
         let sw=0, sv=0; for(let j=0;j<nb.idx.length;j++){ sw+=nb.w[j]; sv+=nb.w[j]*z[nb.idx[j]]; } S[i]=sv/sw; valid[i]=1; res[i]=y[i]-S[i]; }
-      f = fitAreaBeta(res,bin,valid);
+      const t = fitTerms(res,bin,valid,X); f = t.beta; g = t.g;
     }
-    for(let i=0;i<n;i++) z[i] = y[i]-f[bin[i]];
+    for(let i=0;i<n;i++) z[i] = y[i]-f[bin[i]]-gx(i);
     for(let i=0;i<n;i++){ const nb = NB[i]; if(!nb){ S[i]=NaN; continue; } let sw=0, sv=0; for(let j=0;j<nb.idx.length;j++){ sw+=nb.w[j]; sv+=nb.w[j]*z[nb.idx[j]]; } S[i]=sv/sw; }
     return S;
   }
-  const medAPE = (S)=>{ const e=[]; for(let i=0;i<n;i++) if(isFinite(S[i])) e.push(Math.abs(Math.exp(S[i]+f[bin[i]]-y[i])-1)); return median(e); };
+  const medAPE = (S)=>{ const e=[]; for(let i=0;i<n;i++) if(isFinite(S[i])) e.push(Math.abs(Math.exp(S[i]+f[bin[i]]+gx(i)-y[i])-1)); return median(e); };
 
   const table = [];
-  for(const k of ks){ const NB = neighbours(k), S = backfit(NB, table.length ? 3 : 5); table.push({k, medAPE:medAPE(S), f:f.slice(), NB, S}); }
+  for(const k of ks){ const NB = neighbours(k), S = backfit(NB, table.length ? 3 : 5); table.push({k, medAPE:medAPE(S), f:f.slice(), g:g.slice(), NB, S}); }
   let best = Math.min(...table.map(t=>t.medAPE));
   let pick = table.filter(t=>t.medAPE<=best*1.01).pop();      // بزرگ‌ترین k که حداکثر ۱٪ از بهترین بدتر است: هموارتر و پایدارتر
   if(opts.k){ pick = table.find(t=>t.k===opts.k) || pick; }
-  f = pick.f.slice();
+  f = pick.f.slice(); g = pick.g.slice();
   const S = backfit(pick.NB, 3);                                 // ضرایب نهایی با همان k
   const e = [], dm = [];
-  for(let i=0;i<n;i++) if(isFinite(S[i])){ e.push(y[i]-(S[i]+f[bin[i]])); dm.push(pick.NB[i].dmax); }
+  for(let i=0;i<n;i++) if(isFinite(S[i])){ e.push(y[i]-(S[i]+f[bin[i]]+gx(i))); dm.push(pick.NB[i].dmax); }
   const t1 = quant(dm,1/3), t2 = quant(dm,2/3), t90 = quant(dm,.9);
   const band = arr => arr.length>=30 ? {q10:quant(arr,.1), q90:quant(arr,.9)} : null;
   const all = band(e) || {q10:-0.3,q90:0.3};
   const byClass = {dense:[],mid:[],sparse:[]};
   e.forEach((v,i)=>byClass[dm[i]<=t1?"dense":dm[i]<=t2?"mid":"sparse"].push(v));
   const model = {
-    v:1, built:new Date().toISOString(), rate, k:pick.k, proj,
+    v:2, built:new Date().toISOString(), rate, k:pick.k, proj,
     area_bins: f.map((beta,b)=>({lo:AREA_EDGES[b], hi:AREA_EDGES[b+1], beta_log:beta})), ref_bin:REF_BIN,
+    feat:{names:FEAT_NAMES, year_ref:yr, mu, g, known:nKnown, age_cap:AGE_CAP},
     valid_area:[AREA_EDGES[0], AREA_EDGES[AREA_EDGES.length-1]],
     density:{dense_km:t1, mid_km:t2, low_confidence_km:Math.max(t90, 3)},
     interval:{dense:band(byClass.dense)||all, mid:band(byClass.mid)||all, sparse:band(byClass.sparse)||all},
@@ -158,10 +177,15 @@ function fit(list, rate, opts){
 }
 
 /* ---------- تخمین (سمت کاربر) ---------- */
+/** اثر ویژگی‌های اختیاری روی ln(قیمت هر متر)؛ ویژگی نامشخص اثری ندارد. مدل نسخه‌ی ۱ ویژگی ندارد. */
+function featAdj(model, o){
+  const F = model.feat; if(!F) return 0;
+  const c = featCentered(featRaw(o, F.year_ref), F.mu); let s = 0; for(let j=0;j<NF;j++) s += F.g[j]*c[j]; return s;
+}
 function prepare(model, list){
   const n = list.length, xs = new Float64Array(n), ys = new Float64Array(n), vals = new Float64Array(n);
   for(let i=0;i<n;i++){ const l = list[i], p = toXY(model.proj,l.lat,l.lng); xs[i]=p[0]; ys[i]=p[1];
-    vals[i] = Math.log(eqRent(l,model.rate)/l.area) - model.area_bins[binOf(l.area)].beta_log; }
+    vals[i] = Math.log(eqRent(l,model.rate)/l.area) - model.area_bins[binOf(l.area)].beta_log - featAdj(model, l); }
   return {ix:makeIndex(xs,ys), vals, n};
 }
 function smoothAt(model, prep, lat, lng){
@@ -170,13 +194,14 @@ function smoothAt(model, prep, lat, lng){
   const {w,dmax} = weights(d); let sw=0, sv=0; for(let j=0;j<idx.length;j++){ sw+=w[j]; sv+=w[j]*prep.vals[idx[j]]; }
   return {value:sv/sw, dmax:d[d.length-1], k:idx.length};
 }
-/** input: {lat,lng,area,deposit?}  → اجاره‌ی معادل (بدون ودیعه) و اجاره با ودیعه‌ی داده‌شده، رهن کامل معادل، بازه‌ی ۸۰٪ */
+/** input: {lat,lng,area,deposit?, year?(سال ساخت شمسی), elevator?, parking?(true/false؛ نامشخص = حذف)}  → اجاره‌ی معادل (بدون ودیعه) و اجاره با ودیعه‌ی داده‌شده، رهن کامل معادل، بازه‌ی ۸۰٪ */
 function estimate(model, prep, input, smoothed){
   const s = smoothed || smoothAt(model,prep,input.lat,input.lng);
   if(!isFinite(s.value)) return {error:"NOT_ENOUGH_LISTINGS"};
   const area = input.area, warnings = [];
   if(!(area>=model.valid_area[0] && area<=model.valid_area[1])) warnings.push("area_out_of_range");
-  const lp = s.value + model.area_bins[binOf(Math.min(Math.max(area,model.valid_area[0]),model.valid_area[1]))].beta_log;
+  const fa = featAdj(model, {year:input.year, e:input.elevator==null?undefined:(input.elevator?1:0), p:input.parking==null?undefined:(input.parking?1:0)});
+  const lp = s.value + model.area_bins[binOf(Math.min(Math.max(area,model.valid_area[0]),model.valid_area[1]))].beta_log + fa;
   const cls = s.dmax<=model.density.dense_km ? "dense" : s.dmax<=model.density.mid_km ? "mid" : "sparse", band = model.interval[cls];
   if(s.dmax>model.density.low_confidence_km) warnings.push("few_nearby");
   const rate = model.rate, perM2 = Math.exp(lp), total = perM2*area, low = Math.exp(lp+band.q10)*area, high = Math.exp(lp+band.q90)*area;
@@ -190,5 +215,5 @@ function estimate(model, prep, input, smoothed){
   return out;
 }
 
-return {fit, prepare, estimate, smoothAt, prepareList, makeIndex, knn, weights, binOf, toXY, AREA_EDGES, REF_BIN, K_GRID, HARD_REQ};
+return {fit, featAdj, featRaw, persianYear, prepare, estimate, smoothAt, prepareList, makeIndex, knn, weights, binOf, toXY, AREA_EDGES, REF_BIN, K_GRID, HARD_REQ};
 });
