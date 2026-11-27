@@ -168,9 +168,9 @@ function fitInWorker(list, rate){                             // کالیبرا�
 }
 async function makeRentPublic(clean, stats, rate){
   const {model, used, dropped} = await fitInWorker(clean, rate);
-  return {v:1, built:new Date().toISOString(), rate, model,
+  return {v:2, built:new Date().toISOString(), rate, model,
     stats:{...stats, outlier:stats.outlier+dropped, ok:used.length},
-    list:used.map(l=>({la:+l.lat.toFixed(4), lo:+l.lng.toFixed(4), a:l.area, y:l.year||0, d:Math.round(l.dep), r:Math.round(l.rent)}))};
+    list:used.map(l=>({la:+l.lat.toFixed(4), lo:+l.lng.toFixed(4), a:l.area, y:l.year||0, d:Math.round(l.dep), r:Math.round(l.rent), ...(l.e!==undefined?{e:l.e}:{}), ...(l.p!==undefined?{p:l.p}:{})}))};
 }
 function commitRent(pub, clean){
   fs.mkdirSync(STORAGE,{recursive:true,mode:0o700});
@@ -179,21 +179,36 @@ function commitRent(pub, clean){
   rentJson = mkPublic(pub);
 }
 const rentSummary = pub => pub ? {built:pub.built, rate:pub.rate, stats:pub.stats, k:pub.model.k, cv:pub.model.cv, area_bins:pub.model.area_bins, interval:pub.model.interval} : null;
-async function rentFromBuffer(buf, rate){
-  const XLSX = require("./vendor/xlsx.full.min.js"), Core = require("./rent-core.js");
-  const wb = XLSX.read(buf,{type:"buffer"});
-  const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:null,raw:true});
-  const miss = Core.missingColumns(rows); if(miss.length) throw Object.assign(new Error("ستون‌های لازم در فایل نیست: "+miss.join("، ")),{user:true});
+const XLSXlib = () => require("./vendor/xlsx.full.min.js");
+const sheetRows = buf => { const X = XLSXlib(), wb = X.read(buf,{type:"buffer"}); return {rows:X.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:null,raw:true}), name:wb.SheetNames[0]}; };
+const rowsToBuf = (rows, headers, name) => { const X = XLSXlib(), wb = X.utils.book_new(); X.utils.book_append_sheet(wb, X.utils.json_to_sheet(rows,{header:headers}), name||"Sheet1"); return X.write(wb,{type:"buffer",bookType:"xlsx"}); };
+const rentIdFor = rows => { const Core = require("./rent-core.js"), {get} = Core.makeGetter(rows); return r => Core.idOf(r,get); };
+async function rentFromRows(rows, rate){
+  const Core = require("./rent-core.js");
   const {list,stats} = Core.buildRent(rows, loadConfig());
-  if(!list.length) throw Object.assign(new Error("هیچ ردیف قابل استفاده‌ای در این فایل نیست (مختصات، متراژ و ودیعه/اجاره لازم است). جایگزین نشد."),{user:true});
+  if(!list.length) throw Object.assign(new Error("هیچ ردیف قابل استفاده‌ای در داده نیست (مختصات، متراژ و ودیعه/اجاره لازم است). تغییری داده نشد."),{user:true});
   const pub = await makeRentPublic(list, stats, rate).catch(e=>{ throw Object.assign(e,{user:true}); });
   return {pub, clean:{stats, list}};
+}
+async function rentFromBuffer(buf, rate){ return rentFromRows(sheetRows(buf).rows, rate); }
+/** فایل بارگذاری‌شده را با داده‌ی فعلی ادغام می‌کند (mode=merge) یا جایگزین می‌کند (replace). بدون نوشتن چیزی؛ نتیجه برای ثبت یا پیش‌نمایش. */
+function planRentUpload(buf, mode){
+  const Core = require("./rent-core.js"), C = loadConfig();
+  const {rows:inc, name} = sheetRows(buf);
+  const miss = Core.missingColumns(inc); if(miss.length) throw Object.assign(new Error("ستون‌های لازم در فایل نیست: "+miss.join("، ")),{user:true});
+  const fileStats = Core.buildRent(inc, C).stats;
+  let old = []; if(mode==="merge" && fs.existsSync(RENT_FILE)){ try{ old = sheetRows(fs.readFileSync(RENT_FILE)).rows; }catch(e){ throw Object.assign(new Error("داده‌ی فعلی خوانده نشد؛ حالت «جایگزینی» را بزنید."),{user:true}); } }
+  const usableBefore = old.length ? Core.buildRent(old, C).stats.ok : 0;
+  const m = Core.mergeRows(old, inc, rentIdFor);
+  const rep = {...m.report, mode, fileUsable:fileStats.ok, fileStats, usableBefore};
+  const merged = Core.buildRent(m.rows, C).stats; rep.usableAfter = merged.ok; rep.addedUsable = merged.ok - usableBefore; rep.stats = merged;
+  return {rows:m.rows, headers:m.headers, name, report:rep};
 }
 async function initRent(){
   try{
     const dm = fs.statSync(RENT_FILE).mtimeMs; let pm = 0; try{ pm = fs.statSync(RENT_PUBLIC_FILE).mtimeMs; }catch(e){}
     const pub = pm >= dm ? readJson(RENT_PUBLIC_FILE,null) : null;
-    if(pub && pub.v===1 && pub.rate===rentSettings.rate){ rentJson = mkPublic(pub); return; }
+    if(pub && pub.v===2 && pub.rate===rentSettings.rate){ rentJson = mkPublic(pub); return; }
     const {pub:p, clean} = await rentFromBuffer(fs.readFileSync(RENT_FILE), rentSettings.rate); commitRent(p, clean);
   }catch(e){ if(e.code!=="ENOENT") console.error("داده‌ی اجاره ساخته نشد:",e.message); }
 }
@@ -358,21 +373,28 @@ async function adminApi(req,res,url,qs){
   }
   if(url==="/api/admin/rent" && req.method==="POST"){
     if(rentBusy) return send(res,409,{error:"پردازش قبلی هنوز تمام نشده است. چند ثانیه بعد دوباره امتحان کنید."});
+    const q = new URL(req.url,"http://x").searchParams, mode = q.get("mode")==="replace" ? "replace" : "merge", dry = q.get("dry")==="1";
     let buf; try{ buf = await readBody(req,MAX_UPLOAD); }catch(e){ return send(res,413,{error:"حجم فایل بیش از ۲۵ مگابایت است."}); }
     if(buf.length<100 || buf.readUInt32LE(0)!==0x04034b50) return send(res,400,{error:"فایل xlsx معتبر نیست."});
     rentBusy = true;
     try{
-      let r; try{ r = await rentFromBuffer(buf, rentSettings.rate); }catch(e){ console.error("rent parse failed:",e.message); return send(res,400,{error:e.user?e.message:"این فایل خوانده نشد؛ xlsx سالم نیست."}); }
+      let plan; try{ plan = planRentUpload(buf, mode); }catch(e){ console.error("rent parse failed:",e.message); return send(res,400,{error:e.user?e.message:"این فایل خوانده نشد؛ xlsx سالم نیست."}); }
+      const rep = plan.report;
+      if(dry) return send(res,200,{ok:true,dry:true,report:rep});
+      if(mode==="merge" && rep.added===0 && fs.existsSync(RENT_FILE))               // چیزی جدید نیست: فایل و مدل دست نمی‌خورد
+        return send(res,200,{ok:true,nothingNew:true,report:rep,summary:rentSummary(readJson(RENT_PUBLIC_FILE,null))});
+      let r; try{ r = await rentFromRows(plan.rows, rentSettings.rate); }catch(e){ console.error("rent fit failed:",e.message); return send(res,400,{error:e.user?e.message:"مدل اجاره ساخته نشد."}); }
       try{
         fs.mkdirSync(path.dirname(RENT_FILE),{recursive:true}); fs.mkdirSync(BACKUPS,{recursive:true,mode:0o700});
+        const out = mode==="replace" ? buf : rowsToBuf(plan.rows, plan.headers, plan.name);
         if(fs.existsSync(RENT_FILE)){
           fs.copyFileSync(RENT_FILE, path.join(BACKUPS,"rent-"+new Date().toISOString().replace(/[:.]/g,"-")+".xlsx"));
           fs.readdirSync(BACKUPS).filter(f=>/^rent-.*\.xlsx$/.test(f)).sort().reverse().slice(5).forEach(f=>fs.unlinkSync(path.join(BACKUPS,f)));
         }
-        const t=RENT_FILE+".tmp"; fs.writeFileSync(t,buf); fs.renameSync(t,RENT_FILE);
+        const t=RENT_FILE+".tmp"; fs.writeFileSync(t,out); fs.renameSync(t,RENT_FILE);
         commitRent(r.pub, r.clean);
       }catch(e){ console.error("rent upload failed:",e.message); return send(res,500,{error:"ذخیره‌ی فایل انجام نشد."}); }
-      return send(res,200,{ok:true,size:buf.length,summary:rentSummary(r.pub)});
+      return send(res,200,{ok:true,report:rep,summary:rentSummary(r.pub)});
     } finally { rentBusy = false; }
   }
   if(url==="/api/admin/rent-settings" && req.method==="POST"){
